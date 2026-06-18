@@ -37,7 +37,7 @@ Connect with a JupyterLab URL:
 jdx connect 'http://host:8888/lab?token=TOKEN'
 ```
 
-`connect` extracts the token, creates a short profile name such as `jdx-a1b2c3`, creates a workspace directory with that same name on the Jupyter server, and makes the new profile the default.
+`connect` extracts the token, creates a short profile name such as `jdx-a1b2c3`, and creates a workspace directory with that same name on the Jupyter server. It does not change the default profile.
 
 Profiles are stored in the global jdx config at `~/.config/jupydex/config.json`.
 

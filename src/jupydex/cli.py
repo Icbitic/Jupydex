@@ -200,9 +200,8 @@ def connect_new_workspace(
         mirror_path=str(mirror_path),
     )
     profiles.save(resolved_name, profile)
-    profiles.set_default(resolved_name)
 
-    print_connection(resolved_name, info.base_url, workspace, mirror_path, default=True)
+    print_connection(resolved_name, info.base_url, workspace, mirror_path)
     return 0
 
 
@@ -372,9 +371,6 @@ def interactive_connect_profile(profiles: ProfileManager) -> None:
             workspace_input=workspace,
             mirror=mirror,
         )
-        if confirm("Make this the default profile", default=True):
-            profiles.set_default(profile_name)
-            print(f"Default profile: {profile_name}")
         return
 
     connect_new_workspace(
