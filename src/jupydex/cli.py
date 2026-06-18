@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 from .client import JupyterClient, parse_jupyter_url
-from .config import ConfigStore, Profile, load_connect_params
+from .config import Profile, ProfileManager
 from .mirror import (
     default_mirror_path,
     mirror_path_for_profile,
@@ -40,9 +40,6 @@ def build_parser() -> argparse.ArgumentParser:
     connect.add_argument("--token", help="Token if not included in the URL")
     connect.add_argument("--workspace", required=True, help="Workspace path to use")
     connect.add_argument("--mirror", help="Local shadow mirror path")
-
-    connect_config = sub.add_parser("connect-config", help="Create or update a profile from a JSON params file")
-    connect_config.add_argument("path", nargs="?", default="jupydex.local.json")
 
     default = sub.add_parser("default", help="Show or set the default profile")
     default.add_argument("profile_name", nargs="?", help="Profile to use when --profile is omitted")
@@ -100,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def client_for_profile(profile_name: str) -> tuple[JupyterClient, Profile]:
-    profile = ConfigStore().get_profile(profile_name)
+    profile = ProfileManager().get(profile_name)
     return JupyterClient(profile.base_url, profile.token), profile
 
 
@@ -144,7 +141,7 @@ def connect_with_values(
         workspace_input=workspace_input,
         mirror_path=str(mirror_path),
     )
-    ConfigStore().save_profile(profile_name, profile)
+    ProfileManager().save(profile_name, profile)
     print(f"Connected profile {profile_name!r}")
     print(f"Server: {info.base_url}")
     print(f"Workspace: {workspace}")
@@ -152,19 +149,8 @@ def connect_with_values(
     return 0
 
 
-def command_connect_config(args: argparse.Namespace) -> int:
-    params = load_connect_params(args.path)
-    return connect_with_values(
-        profile_name=params.profile,
-        url=params.url,
-        token=params.token,
-        workspace_input=params.workspace,
-        mirror=params.mirror,
-    )
-
-
 def command_profiles(_args: argparse.Namespace) -> int:
-    profiles = ConfigStore().list_profiles()
+    profiles = ProfileManager().list()
     if not profiles:
         print("No profiles saved")
         return 0
@@ -174,12 +160,12 @@ def command_profiles(_args: argparse.Namespace) -> int:
 
 
 def command_default(args: argparse.Namespace) -> int:
-    store = ConfigStore()
+    profiles = ProfileManager()
     if not args.profile_name:
-        print(store.default_profile_name())
+        print(profiles.default_name())
         return 0
 
-    store.set_default_profile(args.profile_name)
+    profiles.set_default(args.profile_name)
     print(f"Default profile: {args.profile_name}")
     return 0
 
@@ -199,7 +185,7 @@ def command_status(args: argparse.Namespace) -> int:
 
 
 def command_mirror(args: argparse.Namespace) -> int:
-    profile = ConfigStore().get_profile(args.profile)
+    profile = ProfileManager().get(args.profile)
     print(mirror_path_for_profile(args.profile, profile))
     return 0
 
@@ -240,7 +226,7 @@ def command_push(args: argparse.Namespace) -> int:
 
 
 def command_dirty(args: argparse.Namespace) -> int:
-    profile = ConfigStore().get_profile(args.profile)
+    profile = ProfileManager().get(args.profile)
     status = mirror_status(args.profile, profile)
     for label in ("added", "modified", "deleted"):
         for path in status[label]:
@@ -377,7 +363,6 @@ def command_shell(args: argparse.Namespace) -> int:
 
 COMMANDS = {
     "connect": command_connect,
-    "connect-config": command_connect_config,
     "default": command_default,
     "profiles": command_profiles,
     "status": command_status,
@@ -401,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.profile is None:
-        args.profile = ConfigStore().default_profile_name()
+        args.profile = ProfileManager().default_name()
     try:
         return COMMANDS[args.command_name](args)
     except KeyboardInterrupt:

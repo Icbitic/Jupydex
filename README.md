@@ -31,37 +31,21 @@ After that, use `jdx ...` directly from any shell.
 
 ## Configure
 
-Create `jupydex.local.json` in the project root:
-
-```json
-{
-  "profile": "default",
-  "url": "http://host:8888/lab?token=TOKEN",
-  "workspace": "/mnt/code/user/project",
-  "mirror": "jdx-mirrors/default"
-}
-```
-
-Then save the profile:
+Save a Jupyter server as a named profile:
 
 ```bash
-jdx connect-config
+jdx --profile lab1 connect 'http://host:8888/lab?token=TOKEN' \
+  --workspace /mnt/code/user/project
 ```
 
-`jupydex.local.json` is ignored by git because it usually contains a token.
+Profiles are stored in the global jdx config at `~/.config/jupydex/config.json`.
 
-Choose the profile used when `--profile` is omitted:
+List profiles and choose the one used when `--profile` is omitted:
 
 ```bash
+jdx profiles
 jdx default lab1
 jdx default
-```
-
-You can also connect without a config file:
-
-```bash
-jdx connect 'http://host:8888/lab?token=TOKEN' \
-  --workspace /mnt/code/user/project
 ```
 
 `workspace` may be either an absolute server path or a Jupyter contents path. If you pass an absolute path, Jupydex searches for the matching path under the Jupyter server root.
@@ -144,7 +128,7 @@ Paths passed to file commands are workspace-relative. A leading `/` means worksp
 
 ## Safety Notes
 
-- Tokens are stored in the local Jupydex profile config. Prefer short-lived development tokens.
+- Tokens are stored in the global jdx profile config. Prefer short-lived development tokens.
 - `push` checks whether tracked remote files changed since the last pull and stops on conflicts unless `--force` is used.
 - `run` and `shell` sync dirty mirror changes first by default. Use `--no-sync` to skip that.
 - If the local terminal receives `SIGHUP` or `SIGTERM`, `jdx` tries to close only the Jupyter terminal it created for that command. An uncatchable `SIGKILL` cannot be cleaned up by any CLI.

@@ -19,15 +19,6 @@ class Profile:
     mirror_path: str | None = None
 
 
-@dataclass
-class ConnectParams:
-    url: str
-    workspace: str
-    profile: str = DEFAULT_PROFILE
-    token: str | None = None
-    mirror: str | None = None
-
-
 def config_path() -> Path:
     explicit = os.environ.get("JUPYDEX_CONFIG")
     if explicit:
@@ -36,27 +27,6 @@ def config_path() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
     root = Path(xdg).expanduser() if xdg else Path.home() / ".config"
     return root / "jupydex" / "config.json"
-
-
-def load_connect_params(path: str | Path) -> ConnectParams:
-    config_file = Path(path).expanduser()
-    with config_file.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if not isinstance(data, dict):
-        raise ValueError(f"Invalid params file: {config_file}")
-
-    missing = [key for key in ("url", "workspace") if not data.get(key)]
-    if missing:
-        raise ValueError(f"Missing required params in {config_file}: {', '.join(missing)}")
-
-    return ConnectParams(
-        url=str(data["url"]),
-        workspace=str(data["workspace"]),
-        profile=str(data.get("profile") or DEFAULT_PROFILE),
-        token=str(data["token"]) if data.get("token") else None,
-        mirror=str(data["mirror"]) if data.get("mirror") else None,
-    )
 
 
 class ConfigStore:
@@ -123,3 +93,23 @@ class ConfigStore:
             name: Profile(**{**raw, "mirror_path": raw.get("mirror_path")})
             for name, raw in data.get("profiles", {}).items()
         }
+
+
+class ProfileManager:
+    def __init__(self, store: ConfigStore | None = None) -> None:
+        self.store = store or ConfigStore()
+
+    def default_name(self) -> str:
+        return self.store.default_profile_name()
+
+    def get(self, name: str) -> Profile:
+        return self.store.get_profile(name)
+
+    def save(self, name: str, profile: Profile) -> None:
+        self.store.save_profile(name, profile)
+
+    def set_default(self, name: str) -> None:
+        self.store.set_default_profile(name)
+
+    def list(self) -> dict[str, Profile]:
+        return self.store.list_profiles()
