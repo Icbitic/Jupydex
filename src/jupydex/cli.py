@@ -14,6 +14,7 @@ from .mirror import (
     push_mirror,
 )
 from .terminal import run_terminal_command_sync
+from .terminal import interactive_terminal_sync
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -78,6 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-sync", action="store_true", help="Run without pushing local mirror changes first")
     run.add_argument("--force-sync", action="store_true", help="Overwrite remote changes while syncing before run")
     run.add_argument("remote_command", nargs=argparse.REMAINDER)
+
+    shell = sub.add_parser("shell", help="Sync local mirror changes, then open an interactive remote shell")
+    shell.add_argument("--no-sync", action="store_true", help="Open shell without pushing local mirror changes first")
+    shell.add_argument("--force-sync", action="store_true", help="Overwrite remote changes while syncing before shell")
 
     return parser
 
@@ -289,19 +294,7 @@ def command_run(args: argparse.Namespace) -> int:
 
     client, profile = client_for_profile(args.profile)
     with client:
-        if not args.no_sync:
-            status = mirror_status(args.profile, profile)
-            if any(status.values()):
-                summary = push_mirror(
-                    client,
-                    args.profile,
-                    profile,
-                    force=args.force_sync,
-                    delete=True,
-                )
-                pushed = summary.pushed
-                deleted = summary.deleted_remote
-                print(f"synced: pushed {pushed}, deleted remote {deleted}", file=sys.stderr)
+        sync_before_remote_action(client, args.profile, profile, args.no_sync, args.force_sync)
 
         result = run_terminal_command_sync(
             client,
@@ -315,6 +308,44 @@ def command_run(args: argparse.Namespace) -> int:
     if result.timed_out:
         print(f"Command timed out after {args.timeout:g}s", file=sys.stderr)
     return result.exit_code
+
+
+def sync_before_remote_action(
+    client: JupyterClient,
+    profile_name: str,
+    profile: Profile,
+    no_sync: bool,
+    force_sync: bool,
+) -> None:
+    if no_sync:
+        return
+
+    status = mirror_status(profile_name, profile)
+    if not any(status.values()):
+        return
+
+    summary = push_mirror(
+        client,
+        profile_name,
+        profile,
+        force=force_sync,
+        delete=True,
+    )
+    print(
+        f"synced: pushed {summary.pushed}, deleted remote {summary.deleted_remote}",
+        file=sys.stderr,
+    )
+
+
+def command_shell(args: argparse.Namespace) -> int:
+    client, profile = client_for_profile(args.profile)
+    with client:
+        sync_before_remote_action(client, args.profile, profile, args.no_sync, args.force_sync)
+        interactive_terminal_sync(
+            client,
+            profile.workspace_input or profile.workspace,
+        )
+    return 0
 
 
 COMMANDS = {
@@ -334,6 +365,7 @@ COMMANDS = {
     "mkdir": command_mkdir,
     "rm": command_rm,
     "run": command_run,
+    "shell": command_shell,
 }
 
 

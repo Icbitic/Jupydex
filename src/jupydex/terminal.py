@@ -3,10 +3,16 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import json
+import os
 import re
+import select
 import secrets
 import shlex
+import shutil
+import sys
+import termios
 import time
+import tty
 import urllib.parse
 
 from .client import JupyterClient
@@ -57,6 +63,118 @@ def clean_terminal_output(buffer: str, start_marker: str, done_re: re.Pattern[st
     if match:
         output = output[: match.start()]
     return output.strip("\r\n")
+
+
+def terminal_size() -> tuple[int, int]:
+    size = shutil.get_terminal_size(fallback=(80, 24))
+    return size.lines, size.columns
+
+
+def shell_intro_command(workspace_command_path: str, start_marker: str, done_marker: str) -> str:
+    cd_target = shlex.quote(workspace_command_path)
+    prompt = "[jupydex] \\w $ "
+    return (
+        f"cd {cd_target}; "
+        "export TERM=${TERM:-xterm-256color}; "
+        f"export PS1={shlex.quote(prompt)}; "
+        f"printf '\\n{start_marker}\\n[jupydex] remote shell in %s\\n' \"$PWD\"; "
+        "stty echo 2>/dev/null; "
+        "bash --noprofile --norc -i; "
+        "__jupydex_shell_status=$?; "
+        f"printf '\\n{done_marker}:%s\\n' \"$__jupydex_shell_status\"\n"
+    )
+
+
+async def interactive_terminal(
+    client: JupyterClient,
+    workspace_command_path: str,
+) -> None:
+    try:
+        import websockets
+    except ImportError as exc:
+        raise RuntimeError(
+            "The `websockets` package is required for `jupydex shell`. "
+            "Install with `uv sync --dev`."
+        ) from exc
+
+    terminal_name = client.create_terminal()
+    marker = secrets.token_hex(8)
+    start_marker = f"__JUPYDEX_SHELL_START_{marker}__"
+    done_marker = f"__JUPYDEX_SHELL_DONE_{marker}__"
+    stdin_fd = sys.stdin.fileno()
+    stdout_fd = sys.stdout.fileno()
+    old_tty_attrs = termios.tcgetattr(stdin_fd) if sys.stdin.isatty() else None
+    stop_event = asyncio.Event()
+
+    async def send_stdin(ws: object) -> None:
+        while not stop_event.is_set():
+            ready, _, _ = await asyncio.to_thread(select.select, [stdin_fd], [], [], 0.1)
+            if not ready:
+                continue
+
+            data = os.read(stdin_fd, 4096)
+            if not data:
+                await ws.send(json.dumps(["stdin", "exit\n"]))
+                break
+            await ws.send(json.dumps(["stdin", data.decode("utf-8", errors="ignore")]))
+
+    async def recv_stdout(ws: object) -> None:
+        started = False
+        pending = ""
+        while True:
+            raw = await ws.recv()
+            pending += terminal_payload(raw)
+
+            if not started:
+                start_idx = pending.find(start_marker)
+                if start_idx < 0:
+                    pending = pending[-len(start_marker):]
+                    continue
+                pending = pending[start_idx + len(start_marker):]
+                started = True
+
+            done_idx = pending.find(done_marker)
+            if done_idx >= 0:
+                output = pending[:done_idx].strip("\r\n")
+                if output:
+                    os.write(stdout_fd, output.encode("utf-8", errors="replace"))
+                    os.write(stdout_fd, b"\n")
+                stop_event.set()
+                return
+
+            keep = max(len(done_marker) - 1, 0)
+            if len(pending) > keep:
+                output = pending[:-keep] if keep else pending
+                if output:
+                    os.write(stdout_fd, output.encode("utf-8", errors="replace"))
+                pending = pending[-keep:] if keep else ""
+
+    try:
+        async with websockets.connect(
+            terminal_ws_url(client.base_url, client.token, terminal_name),
+            max_size=None,
+        ) as ws:
+            rows, cols = terminal_size()
+            await ws.send(json.dumps(["set_size", rows, cols]))
+            await ws.send(json.dumps(["stdin", "stty -echo 2>/dev/null\n"]))
+            await asyncio.sleep(0.1)
+            await ws.send(json.dumps(["stdin", shell_intro_command(workspace_command_path, start_marker, done_marker)]))
+
+            if old_tty_attrs is not None:
+                tty.setraw(stdin_fd)
+
+            stdin_task = asyncio.create_task(send_stdin(ws))
+            stdout_task = asyncio.create_task(recv_stdout(ws))
+            try:
+                await stdout_task
+            finally:
+                stop_event.set()
+                stdin_task.cancel()
+                await asyncio.gather(stdin_task, return_exceptions=True)
+    finally:
+        if old_tty_attrs is not None:
+            termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty_attrs)
+        client.delete_terminal(terminal_name)
 
 
 async def run_terminal_command(
@@ -140,3 +258,10 @@ def run_terminal_command_sync(
             timeout=timeout,
         )
     )
+
+
+def interactive_terminal_sync(
+    client: JupyterClient,
+    workspace_command_path: str,
+) -> None:
+    asyncio.run(interactive_terminal(client, workspace_command_path))

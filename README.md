@@ -95,6 +95,16 @@ jupydex run -- python sleep.py
 Use `--no-sync` if you intentionally want to run the current remote state
 without pushing local mirror changes first.
 
+For a more SSH-like interactive session:
+
+```bash
+jupydex shell
+```
+
+This opens a Jupyter terminal websocket in the selected workspace. It is not a
+real SSH daemon, but it behaves like a local terminal connected to the remote
+Jupyter server. Exit with `exit` or `Ctrl-D`.
+
 File transfer:
 
 ```bash
