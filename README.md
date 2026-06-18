@@ -83,6 +83,18 @@ jupydex run -- ls -la
 jupydex run -- python -V
 ```
 
+`jupydex run` pushes dirty mirror files before executing, so the common loop is:
+
+```bash
+cd "$(jupydex mirror)"
+nano sleep.py
+cd -
+jupydex run -- python sleep.py
+```
+
+Use `--no-sync` if you intentionally want to run the current remote state
+without pushing local mirror changes first.
+
 File transfer:
 
 ```bash

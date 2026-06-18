@@ -73,8 +73,10 @@ def build_parser() -> argparse.ArgumentParser:
     rm = sub.add_parser("rm", help="Delete a remote file or empty directory")
     rm.add_argument("path")
 
-    run = sub.add_parser("run", help="Run a command in the selected workspace")
+    run = sub.add_parser("run", help="Sync local mirror changes, then run a command in the selected workspace")
     run.add_argument("--timeout", type=float, default=300.0)
+    run.add_argument("--no-sync", action="store_true", help="Run without pushing local mirror changes first")
+    run.add_argument("--force-sync", action="store_true", help="Overwrite remote changes while syncing before run")
     run.add_argument("remote_command", nargs=argparse.REMAINDER)
 
     return parser
@@ -287,6 +289,20 @@ def command_run(args: argparse.Namespace) -> int:
 
     client, profile = client_for_profile(args.profile)
     with client:
+        if not args.no_sync:
+            status = mirror_status(args.profile, profile)
+            if any(status.values()):
+                summary = push_mirror(
+                    client,
+                    args.profile,
+                    profile,
+                    force=args.force_sync,
+                    delete=True,
+                )
+                pushed = summary.pushed
+                deleted = summary.deleted_remote
+                print(f"synced: pushed {pushed}, deleted remote {deleted}", file=sys.stderr)
+
         result = run_terminal_command_sync(
             client,
             profile.workspace_input or profile.workspace,
