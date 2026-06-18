@@ -46,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     default.add_argument("profile_name", nargs="?", help="Profile to use when --profile is omitted")
 
     sub.add_parser("profiles", help="List saved profiles")
+    remove_profile = sub.add_parser("remove-profile", help="Remove a saved profile")
+    remove_profile.add_argument("profile_name", help="Profile to remove")
+
     sub.add_parser("status", help="Show Jupyter server status")
     sub.add_parser("mirror", help="Print the local shadow mirror path")
 
@@ -253,6 +256,16 @@ def command_default(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_remove_profile(args: argparse.Namespace) -> int:
+    default_name = ProfileManager().remove(args.profile_name)
+    print(f"Removed profile {args.profile_name!r}")
+    if default_name:
+        print(f"Default profile: {default_name}")
+    else:
+        print("No profiles saved")
+    return 0
+
+
 def command_status(args: argparse.Namespace) -> int:
     client, profile = client_for_profile(args.profile)
     with client:
@@ -447,6 +460,7 @@ def command_shell(args: argparse.Namespace) -> int:
 COMMANDS = {
     "connect": command_connect,
     "default": command_default,
+    "remove-profile": command_remove_profile,
     "profiles": command_profiles,
     "status": command_status,
     "mirror": command_mirror,

@@ -47,6 +47,7 @@ List profiles and choose the one used when `--profile` is omitted:
 jdx profiles
 jdx default lab1
 jdx default
+jdx remove-profile old-lab
 ```
 
 To bind a profile to an existing workspace instead, pass `--workspace`:
@@ -115,6 +116,7 @@ jdx connect URL          # quick profile and workspace setup
 jdx status              # server, workspace, and mirror info
 jdx default [profile]   # show or set default profile
 jdx profiles            # saved local profiles
+jdx remove-profile name  # remove a saved local profile
 jdx mirror              # print local mirror path
 jdx dirty               # local mirror changes since last sync
 

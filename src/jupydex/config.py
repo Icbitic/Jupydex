@@ -63,6 +63,25 @@ class ConfigStore:
         data["profiles"][name] = asdict(profile)
         self.save_all(data)
 
+    def remove_profile(self, name: str) -> str | None:
+        data = self.load_all()
+        profiles = data.get("profiles", {})
+        if name not in profiles:
+            raise KeyError(
+                f"No jdx profile named {name!r}. Run `jdx profiles` to see available profiles."
+            )
+
+        profiles.pop(name)
+        default = data.get("default_profile")
+        if default == name or default not in profiles:
+            if profiles:
+                data["default_profile"] = sorted(profiles)[0]
+            else:
+                data.pop("default_profile", None)
+
+        self.save_all(data)
+        return data.get("default_profile")
+
     def default_profile_name(self) -> str:
         data = self.load_all()
         value = data.get("default_profile")
@@ -107,6 +126,9 @@ class ProfileManager:
 
     def save(self, name: str, profile: Profile) -> None:
         self.store.save_profile(name, profile)
+
+    def remove(self, name: str) -> str | None:
+        return self.store.remove_profile(name)
 
     def set_default(self, name: str) -> None:
         self.store.set_default_profile(name)
