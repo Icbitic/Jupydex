@@ -14,10 +14,20 @@ Notebook cell editing/execution is intentionally out of scope.
 
 ## Install
 
+For development dependencies and tests:
+
 ```bash
 uv venv
 uv sync --dev
 ```
+
+Install the `jupydex` command globally from this checkout:
+
+```bash
+uv tool install --editable .
+```
+
+After that, use `jupydex ...` directly from any shell.
 
 ## Configure
 
@@ -35,7 +45,7 @@ Create `jupydex.local.json` in the project root:
 Then save the profile:
 
 ```bash
-uv run jupydex connect-config
+jupydex connect-config
 ```
 
 `jupydex.local.json` is ignored by git because it usually contains a token.
@@ -43,7 +53,7 @@ uv run jupydex connect-config
 You can also connect without a config file:
 
 ```bash
-uv run jupydex connect 'http://host:8888/lab?token=TOKEN' \
+jupydex connect 'http://host:8888/lab?token=TOKEN' \
   --workspace /mnt/code/user/project
 ```
 
@@ -54,8 +64,8 @@ uv run jupydex connect 'http://host:8888/lab?token=TOKEN' \
 Pull the remote workspace into the visible local mirror:
 
 ```bash
-uv run jupydex pull
-uv run jupydex mirror
+jupydex pull
+jupydex mirror
 ```
 
 By default, mirrors live at:
@@ -67,26 +77,26 @@ jupydex-mirrors/<profile>
 Edit files in that mirror with normal local tools:
 
 ```bash
-cd "$(uv run jupydex mirror)"
+cd "$(jupydex mirror)"
 nano sleep.py
 ```
 
 Run commands remotely from the selected Jupyter workspace:
 
 ```bash
-uv run jupydex run -- python sleep.py
+jupydex run -- python sleep.py
 ```
 
 `run` pushes dirty mirror files before executing. Output streams live, so long-running jobs show logs as they happen:
 
 ```bash
-uv run jupydex run -- python train.py
+jupydex run -- python train.py
 ```
 
 Use `--no-sync` when you intentionally want to run the current remote state without pushing local edits:
 
 ```bash
-uv run jupydex run --no-sync -- python script.py
+jupydex run --no-sync -- python script.py
 ```
 
 ## Interactive Shell
@@ -94,7 +104,7 @@ uv run jupydex run --no-sync -- python script.py
 Open a remote shell in the selected workspace:
 
 ```bash
-uv run jupydex shell
+jupydex shell
 ```
 
 The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`, and `top` should work. It is still a Jupyter terminal websocket rather than a real SSH daemon, so very demanding TUI programs may expose terminal-emulation differences. Exit with `exit` or `Ctrl-D`.
@@ -102,24 +112,24 @@ The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`
 ## Commands
 
 ```bash
-uv run jupydex status              # server, workspace, and mirror info
-uv run jupydex profiles            # saved local profiles
-uv run jupydex mirror              # print local mirror path
-uv run jupydex dirty               # local mirror changes since last sync
+jupydex status              # server, workspace, and mirror info
+jupydex profiles            # saved local profiles
+jupydex mirror              # print local mirror path
+jupydex dirty               # local mirror changes since last sync
 
-uv run jupydex pull                # remote -> local mirror
-uv run jupydex push                # local mirror -> remote
-uv run jupydex push --delete       # also delete remote files removed locally
+jupydex pull                # remote -> local mirror
+jupydex push                # local mirror -> remote
+jupydex push --delete       # also delete remote files removed locally
 
-uv run jupydex ls [path]
-uv run jupydex cat path
-uv run jupydex put local.py remote.py
-uv run jupydex get remote.py local.py
-uv run jupydex write notes.txt < notes.txt
-uv run jupydex mkdir data
-uv run jupydex rm old.txt
-uv run jupydex run -- python -V
-uv run jupydex shell
+jupydex ls [path]
+jupydex cat path
+jupydex put local.py remote.py
+jupydex get remote.py local.py
+jupydex write notes.txt < notes.txt
+jupydex mkdir data
+jupydex rm old.txt
+jupydex run -- python -V
+jupydex shell
 ```
 
 Paths passed to file commands are workspace-relative. A leading `/` means workspace root, not the host root, so `jupydex cat /README.md` reads `README.md` inside the selected workspace.
