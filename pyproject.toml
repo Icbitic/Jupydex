@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jupydex"
+version = "0.1.0"
+description = "SSH-like Codex helper for Jupyter Server workspaces"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "httpx>=0.25",
+  "python-socks>=2.5",
+  "websockets>=12",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+]
+
+[project.scripts]
+jupydex = "jupydex.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jupydex"]

@@ -1,0 +1,11 @@
+.DS_Store
+**/.DS_Store
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.jupydex/
+jupydex.local.json
+*.egg-info/
+dist/
+build/
