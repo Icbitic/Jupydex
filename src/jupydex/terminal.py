@@ -229,7 +229,7 @@ async def interactive_terminal(
     finally:
         if old_tty_attrs is not None:
             termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty_attrs)
-        client.delete_terminal(terminal_name)
+        client.delete_terminal(terminal_name, wait=True)
 
 
 async def run_terminal_command(

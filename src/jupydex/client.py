@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import base64
 import posixpath
+import time
 import urllib.parse
 
 import httpx
@@ -224,6 +225,9 @@ class JupyterClient:
     def terminals(self) -> list[dict[str, object]]:
         return self.request("GET", "terminals").json()
 
+    def terminal_exists(self, name: str) -> bool:
+        return any(item.get("name") == name for item in self.terminals())
+
     def create_terminal(self) -> str:
         response = self.request("POST", "terminals", json={})
         data = response.json()
@@ -232,8 +236,16 @@ class JupyterClient:
             raise JupyterError(f"Unexpected terminal create response: {data!r}")
         return name
 
-    def delete_terminal(self, name: str) -> None:
+    def delete_terminal(self, name: str, *, wait: bool = False, timeout: float = 5.0) -> None:
         quoted = urllib.parse.quote(name, safe="")
         response = self.http.delete(self.api_url(f"terminals/{quoted}"))
         if response.status_code not in (204, 404):
             raise JupyterError(f"DELETE terminal {name} failed: {response.status_code} {response.text}")
+        if not wait or response.status_code == 404:
+            return
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not self.terminal_exists(name):
+                return
+            time.sleep(0.1)
