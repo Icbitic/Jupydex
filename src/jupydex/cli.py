@@ -45,6 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
     connect_config = sub.add_parser("connect-config", help="Create or update a profile from a JSON params file")
     connect_config.add_argument("path", nargs="?", default="jupydex.local.json")
 
+    default = sub.add_parser("default", help="Show or set the default profile")
+    default.add_argument("profile_name", nargs="?", help="Profile to use when --profile is omitted")
+
     sub.add_parser("profiles", help="List saved profiles")
     sub.add_parser("status", help="Show Jupyter server status")
     sub.add_parser("mirror", help="Print the local shadow mirror path")
@@ -168,6 +171,17 @@ def command_profiles(_args: argparse.Namespace) -> int:
         return 0
     for name, profile in sorted(profiles.items()):
         print(f"{name}\t{profile.base_url}\t{profile.workspace}")
+    return 0
+
+
+def command_default(args: argparse.Namespace) -> int:
+    store = ConfigStore()
+    if not args.profile_name:
+        print(store.default_profile_name())
+        return 0
+
+    store.set_default_profile(args.profile_name)
+    print(f"Default profile: {args.profile_name}")
     return 0
 
 
@@ -360,6 +374,7 @@ def command_shell(args: argparse.Namespace) -> int:
 COMMANDS = {
     "connect": command_connect,
     "connect-config": command_connect_config,
+    "default": command_default,
     "profiles": command_profiles,
     "status": command_status,
     "mirror": command_mirror,

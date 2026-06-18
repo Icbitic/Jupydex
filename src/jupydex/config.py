@@ -98,6 +98,15 @@ class ConfigStore:
         value = data.get("default_profile")
         return str(value) if value else DEFAULT_PROFILE
 
+    def set_default_profile(self, name: str) -> None:
+        data = self.load_all()
+        if name not in data.get("profiles", {}):
+            raise KeyError(
+                f"No Jupydex profile named {name!r}. Run `jdx profiles` to see available profiles."
+            )
+        data["default_profile"] = name
+        self.save_all(data)
+
     def get_profile(self, name: str = DEFAULT_PROFILE) -> Profile:
         data = self.load_all()
         raw = data.get("profiles", {}).get(name)

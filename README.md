@@ -49,8 +49,13 @@ jdx connect-config
 ```
 
 `jupydex.local.json` is ignored by git because it usually contains a token.
-If the saved config contains `"default_profile": "lab1"`, commands without
-`--profile` use `lab1`.
+
+Choose the profile used when `--profile` is omitted:
+
+```bash
+jdx default lab1
+jdx default
+```
 
 You can also connect without a config file:
 
@@ -115,6 +120,7 @@ The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`
 
 ```bash
 jdx status              # server, workspace, and mirror info
+jdx default [profile]   # show or set default profile
 jdx profiles            # saved local profiles
 jdx mirror              # print local mirror path
 jdx dirty               # local mirror changes since last sync
