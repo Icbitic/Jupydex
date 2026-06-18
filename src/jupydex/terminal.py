@@ -53,18 +53,6 @@ def terminal_payload(message: str) -> str:
     return ""
 
 
-def clean_terminal_output(buffer: str, start_marker: str, done_re: re.Pattern[str]) -> str:
-    # Jupyter terminals may echo the submitted wrapper command. That echoed line
-    # contains the marker literals, so use the last start marker: the one printed
-    # immediately before the user's command runs.
-    start_idx = buffer.rfind(start_marker)
-    output = buffer[start_idx + len(start_marker):] if start_idx >= 0 else buffer
-    match = done_re.search(output)
-    if match:
-        output = output[: match.start()]
-    return output.strip("\r\n")
-
-
 def terminal_size() -> tuple[int, int]:
     size = shutil.get_terminal_size(fallback=(80, 24))
     return size.lines, size.columns

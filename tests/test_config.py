@@ -33,7 +33,7 @@ def test_load_connect_params_full(tmp_path):
                 "url": "http://example.com:8888/lab",
                 "token": "abc",
                 "workspace": "/remote/workspace",
-                "mirror": ".jupydex/mirrors/remote",
+                "mirror": "jupydex-mirrors/remote",
             }
         ),
         encoding="utf-8",
@@ -43,4 +43,4 @@ def test_load_connect_params_full(tmp_path):
 
     assert params.profile == "remote"
     assert params.token == "abc"
-    assert params.mirror == ".jupydex/mirrors/remote"
+    assert params.mirror == "jupydex-mirrors/remote"

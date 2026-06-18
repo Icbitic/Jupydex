@@ -1,12 +1,16 @@
 # Jupydex
 
-Jupydex makes a Jupyter Server feel like a lightweight SSH target for Codex.
+Jupydex makes a Jupyter Server feel like a small SSH target for Codex and local terminal work. It uses Jupyter's existing APIs, so it does not require SSH access or notebook-specific behavior.
 
-It deliberately avoids notebook abstractions. The model is:
+The core model is simple:
 
-- Jupyter Contents API as remote file access.
-- Jupyter terminal websocket as remote shell execution.
-- A selected workspace as the remote working directory.
+- `jupydex-mirrors/<profile>` is the local shadow copy Codex edits.
+- Jupyter Contents API handles file sync.
+- Jupyter terminal websockets run commands on the server.
+- `jupydex run` syncs local edits first, then streams remote output live.
+- `jupydex shell` opens an interactive remote terminal in the selected workspace.
+
+Notebook cell editing/execution is intentionally out of scope.
 
 ## Install
 
@@ -15,128 +19,114 @@ uv venv
 uv sync --dev
 ```
 
-## Connect
+## Configure
 
-Use a JupyterLab URL with a token. The token is saved in your local Jupydex
-profile, so prefer a short-lived development token.
-
-Put connection parameters in `jupydex.local.json`:
+Create `jupydex.local.json` in the project root:
 
 ```json
 {
   "profile": "default",
   "url": "http://host:8888/lab?token=TOKEN",
   "workspace": "/mnt/code/user/project",
-  "mirror": ".jupydex/mirrors/default"
+  "mirror": "jupydex-mirrors/default"
 }
 ```
 
-Then connect from that file:
+Then save the profile:
 
 ```bash
-jupydex connect-config
+uv run jupydex connect-config
 ```
 
 `jupydex.local.json` is ignored by git because it usually contains a token.
 
-You can still connect from CLI args:
+You can also connect without a config file:
 
 ```bash
-jupydex --profile default connect 'http://host:8888/lab?token=TOKEN' \
+uv run jupydex connect 'http://host:8888/lab?token=TOKEN' \
   --workspace /mnt/code/user/project
 ```
 
-Jupydex accepts either an absolute remote path or a Jupyter contents path. If an
-absolute path is provided, it tries suffixes until it finds the matching contents
-path under the Jupyter server root.
+`workspace` may be either an absolute server path or a Jupyter contents path. If you pass an absolute path, Jupydex searches for the matching path under the Jupyter server root.
 
-## SSH-like Usage
+## Mirror Workflow
 
-Pull the remote workspace into the local shadow mirror first:
+Pull the remote workspace into the visible local mirror:
 
 ```bash
-jupydex pull
-jupydex mirror
+uv run jupydex pull
+uv run jupydex mirror
 ```
 
-By default the mirror lives at:
+By default, mirrors live at:
 
 ```text
-.jupydex/mirrors/<profile>
+jupydex-mirrors/<profile>
 ```
 
-That local mirror is where Codex should inspect files, run `rg`, and apply
-patches. Push changed local files back to Jupyter when ready:
+Edit files in that mirror with normal local tools:
 
 ```bash
-jupydex push
-```
-
-Use `--delete` to also delete remote files that were removed locally.
-
-```bash
-jupydex status
-jupydex ls
-jupydex cat pyproject.toml
-jupydex run -- pwd
-jupydex run -- ls -la
-jupydex run -- python -V
-```
-
-`jupydex run` pushes dirty mirror files before executing, so the common loop is:
-
-```bash
-cd "$(jupydex mirror)"
+cd "$(uv run jupydex mirror)"
 nano sleep.py
-cd -
-jupydex run -- python sleep.py
 ```
 
-Use `--no-sync` if you intentionally want to run the current remote state
-without pushing local mirror changes first.
-
-Command output is streamed as it arrives, so long-running jobs show live logs:
+Run commands remotely from the selected Jupyter workspace:
 
 ```bash
-jupydex run -- python train.py
+uv run jupydex run -- python sleep.py
 ```
 
-For a more SSH-like interactive session:
+`run` pushes dirty mirror files before executing. Output streams live, so long-running jobs show logs as they happen:
 
 ```bash
-jupydex shell
+uv run jupydex run -- python train.py
 ```
 
-This opens a Jupyter terminal websocket in the selected workspace. It is not a
-real SSH daemon, but it behaves like a local terminal connected to the remote
-Jupyter server. It uses raw passthrough after setup, so full-screen terminal
-apps such as `vim`, `less`, and `top` can take over the terminal. Exit with
-`exit` or `Ctrl-D`.
-
-File transfer:
+Use `--no-sync` when you intentionally want to run the current remote state without pushing local edits:
 
 ```bash
-jupydex put local.py remote.py
-jupydex get remote.py local.py
-jupydex write notes.txt < notes.txt
-jupydex mkdir data
-jupydex rm old.txt
+uv run jupydex run --no-sync -- python script.py
 ```
 
-Paths are workspace-relative. A leading `/` means workspace root, not host root,
-so `jupydex cat /README.md` reads `README.md` in the selected workspace.
+## Interactive Shell
 
-## Design Notes
+Open a remote shell in the selected workspace:
 
-This is intentionally closer to `ssh` plus `sftp` than to a notebook client.
-For Codex, that means the useful primitive operations are simple:
+```bash
+uv run jupydex shell
+```
 
-- inspect files
-- patch files
-- run commands
-- fetch logs/artifacts
+The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`, and `top` should work. It is still a Jupyter terminal websocket rather than a real SSH daemon, so very demanding TUI programs may expose terminal-emulation differences. Exit with `exit` or `Ctrl-D`.
 
-The shadow mirror is intentionally first-class because it gives Codex local
-tooling ergonomics while preserving remote execution on the Jupyter machine.
+## Commands
 
-Notebook cell editing and execution are out of scope.
+```bash
+uv run jupydex status              # server, workspace, and mirror info
+uv run jupydex profiles            # saved local profiles
+uv run jupydex mirror              # print local mirror path
+uv run jupydex dirty               # local mirror changes since last sync
+
+uv run jupydex pull                # remote -> local mirror
+uv run jupydex push                # local mirror -> remote
+uv run jupydex push --delete       # also delete remote files removed locally
+
+uv run jupydex ls [path]
+uv run jupydex cat path
+uv run jupydex put local.py remote.py
+uv run jupydex get remote.py local.py
+uv run jupydex write notes.txt < notes.txt
+uv run jupydex mkdir data
+uv run jupydex rm old.txt
+uv run jupydex run -- python -V
+uv run jupydex shell
+```
+
+Paths passed to file commands are workspace-relative. A leading `/` means workspace root, not the host root, so `jupydex cat /README.md` reads `README.md` inside the selected workspace.
+
+## Safety Notes
+
+- Tokens are stored in the local Jupydex profile config. Prefer short-lived development tokens.
+- `push` checks whether tracked remote files changed since the last pull and stops on conflicts unless `--force` is used.
+- `run` and `shell` sync dirty mirror changes first by default. Use `--no-sync` to skip that.
+- The mirror sync state is stored as `jupydex-mirror-state.json` inside each mirror and is not pushed to the Jupyter workspace.

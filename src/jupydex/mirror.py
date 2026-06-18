@@ -12,7 +12,7 @@ from .client import JupyterClient, workspace_relative_path
 from .config import Profile
 
 
-METADATA_FILE = ".jupydex-mirror.json"
+METADATA_FILE = "jupydex-mirror-state.json"
 
 
 @dataclass
@@ -30,7 +30,7 @@ class MirrorConflict(RuntimeError):
 
 def default_mirror_path(profile_name: str, cwd: Path | None = None) -> Path:
     root = cwd or Path.cwd()
-    return (root / ".jupydex" / "mirrors" / profile_name).resolve()
+    return (root / "jupydex-mirrors" / profile_name).resolve()
 
 
 def mirror_path_for_profile(profile_name: str, profile: Profile) -> Path:
@@ -84,20 +84,6 @@ def remote_signature(model: dict[str, Any]) -> dict[str, Any]:
         "hash": model.get("hash"),
         "hash_algorithm": model.get("hash_algorithm"),
     }
-
-
-def signatures_match(left: dict[str, Any] | None, right: dict[str, Any] | None) -> bool:
-    if not left or not right:
-        return left == right
-    return remote_signature(left) == remote_signature(right)
-
-
-def is_metadata_or_temp(path: Path, mirror_root: Path) -> bool:
-    try:
-        rel = path.relative_to(mirror_root)
-    except ValueError:
-        return False
-    return rel.parts and rel.parts[0] == METADATA_FILE
 
 
 def safe_local_path(mirror_root: Path, rel_path: str) -> Path:
