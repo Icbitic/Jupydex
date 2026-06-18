@@ -19,7 +19,7 @@ from .terminal import interactive_terminal_sync
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="jupydex",
+        prog="jdx",
         description="SSH-like access to a selected Jupyter Server workspace.",
     )
     parser.add_argument("--profile", default=DEFAULT_PROFILE, help="Profile name")
@@ -290,7 +290,7 @@ def command_run(args: argparse.Namespace) -> int:
     if command.startswith("-- "):
         command = command[3:].strip()
     if not command:
-        raise SystemExit("Usage: jupydex run -- <command>")
+        raise SystemExit("Usage: jdx run -- <command>")
 
     client, profile = client_for_profile(args.profile)
     with client:
@@ -377,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Interrupted", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(f"jupydex: {exc}", file=sys.stderr)
+        print(f"jdx: {exc}", file=sys.stderr)
         return 1
 
 

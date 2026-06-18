@@ -143,7 +143,7 @@ async def interactive_terminal(
         import websockets
     except ImportError as exc:
         raise RuntimeError(
-            "The `websockets` package is required for `jupydex shell`. "
+            "The `websockets` package is required for `jdx shell`. "
             "Install with `uv sync --dev`."
         ) from exc
 
@@ -244,7 +244,7 @@ async def run_terminal_command(
         import websockets
     except ImportError as exc:
         raise RuntimeError(
-            "The `websockets` package is required for `jupydex run`. "
+            "The `websockets` package is required for `jdx run`. "
             "Install with `python -m pip install -e .`."
         ) from exc
 

@@ -98,7 +98,7 @@ class ConfigStore:
         raw = data.get("profiles", {}).get(name)
         if not raw:
             raise KeyError(
-                f"No Jupydex profile named {name!r}. Run `jupydex connect` first."
+                f"No Jupydex profile named {name!r}. Run `jdx connect` first."
             )
         raw.setdefault("mirror_path", None)
         return Profile(**raw)

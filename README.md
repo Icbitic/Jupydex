@@ -7,8 +7,8 @@ The core model is simple:
 - `jupydex-mirrors/<profile>` is the local shadow copy Codex edits.
 - Jupyter Contents API handles file sync.
 - Jupyter terminal websockets run commands on the server.
-- `jupydex run` syncs local edits first, then streams remote output live.
-- `jupydex shell` opens an interactive remote terminal in the selected workspace.
+- `jdx run` syncs local edits first, then streams remote output live.
+- `jdx shell` opens an interactive remote terminal in the selected workspace.
 
 Notebook cell editing/execution is intentionally out of scope.
 
@@ -21,13 +21,13 @@ uv venv
 uv sync --dev
 ```
 
-Install the `jupydex` command globally from this checkout:
+Install the `jdx` command globally from this checkout:
 
 ```bash
 uv tool install --editable .
 ```
 
-After that, use `jupydex ...` directly from any shell.
+After that, use `jdx ...` directly from any shell.
 
 ## Configure
 
@@ -45,7 +45,7 @@ Create `jupydex.local.json` in the project root:
 Then save the profile:
 
 ```bash
-jupydex connect-config
+jdx connect-config
 ```
 
 `jupydex.local.json` is ignored by git because it usually contains a token.
@@ -53,7 +53,7 @@ jupydex connect-config
 You can also connect without a config file:
 
 ```bash
-jupydex connect 'http://host:8888/lab?token=TOKEN' \
+jdx connect 'http://host:8888/lab?token=TOKEN' \
   --workspace /mnt/code/user/project
 ```
 
@@ -64,8 +64,8 @@ jupydex connect 'http://host:8888/lab?token=TOKEN' \
 Pull the remote workspace into the visible local mirror:
 
 ```bash
-jupydex pull
-jupydex mirror
+jdx pull
+jdx mirror
 ```
 
 By default, mirrors live at:
@@ -77,26 +77,26 @@ jupydex-mirrors/<profile>
 Edit files in that mirror with normal local tools:
 
 ```bash
-cd "$(jupydex mirror)"
+cd "$(jdx mirror)"
 nano sleep.py
 ```
 
 Run commands remotely from the selected Jupyter workspace:
 
 ```bash
-jupydex run -- python sleep.py
+jdx run -- python sleep.py
 ```
 
 `run` pushes dirty mirror files before executing. Output streams live, so long-running jobs show logs as they happen:
 
 ```bash
-jupydex run -- python train.py
+jdx run -- python train.py
 ```
 
 Use `--no-sync` when you intentionally want to run the current remote state without pushing local edits:
 
 ```bash
-jupydex run --no-sync -- python script.py
+jdx run --no-sync -- python script.py
 ```
 
 ## Interactive Shell
@@ -104,7 +104,7 @@ jupydex run --no-sync -- python script.py
 Open a remote shell in the selected workspace:
 
 ```bash
-jupydex shell
+jdx shell
 ```
 
 The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`, and `top` should work. It is still a Jupyter terminal websocket rather than a real SSH daemon, so very demanding TUI programs may expose terminal-emulation differences. Exit with `exit` or `Ctrl-D`.
@@ -112,27 +112,27 @@ The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`
 ## Commands
 
 ```bash
-jupydex status              # server, workspace, and mirror info
-jupydex profiles            # saved local profiles
-jupydex mirror              # print local mirror path
-jupydex dirty               # local mirror changes since last sync
+jdx status              # server, workspace, and mirror info
+jdx profiles            # saved local profiles
+jdx mirror              # print local mirror path
+jdx dirty               # local mirror changes since last sync
 
-jupydex pull                # remote -> local mirror
-jupydex push                # local mirror -> remote
-jupydex push --delete       # also delete remote files removed locally
+jdx pull                # remote -> local mirror
+jdx push                # local mirror -> remote
+jdx push --delete       # also delete remote files removed locally
 
-jupydex ls [path]
-jupydex cat path
-jupydex put local.py remote.py
-jupydex get remote.py local.py
-jupydex write notes.txt < notes.txt
-jupydex mkdir data
-jupydex rm old.txt
-jupydex run -- python -V
-jupydex shell
+jdx ls [path]
+jdx cat path
+jdx put local.py remote.py
+jdx get remote.py local.py
+jdx write notes.txt < notes.txt
+jdx mkdir data
+jdx rm old.txt
+jdx run -- python -V
+jdx shell
 ```
 
-Paths passed to file commands are workspace-relative. A leading `/` means workspace root, not the host root, so `jupydex cat /README.md` reads `README.md` inside the selected workspace.
+Paths passed to file commands are workspace-relative. A leading `/` means workspace root, not the host root, so `jdx cat /README.md` reads `README.md` inside the selected workspace.
 
 ## Safety Notes
 

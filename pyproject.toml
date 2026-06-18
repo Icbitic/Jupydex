@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.scripts]
-jupydex = "jupydex.cli:main"
+jdx = "jupydex.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jupydex"]
