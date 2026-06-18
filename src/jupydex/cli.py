@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="jdx",
         description="SSH-like access to a selected Jupyter Server workspace.",
     )
-    parser.add_argument("--profile", default=DEFAULT_PROFILE, help="Profile name")
+    parser.add_argument("--profile", help="Profile name")
 
     sub = parser.add_subparsers(dest="command_name", required=True)
 
@@ -381,6 +381,8 @@ COMMANDS = {
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.profile is None:
+        args.profile = ConfigStore().default_profile_name()
     try:
         return COMMANDS[args.command_name](args)
     except KeyboardInterrupt:

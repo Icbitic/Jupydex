@@ -49,6 +49,8 @@ jdx connect-config
 ```
 
 `jupydex.local.json` is ignored by git because it usually contains a token.
+If the saved config contains `"default_profile": "lab1"`, commands without
+`--profile` use `lab1`.
 
 You can also connect without a config file:
 

@@ -93,6 +93,11 @@ class ConfigStore:
         data["profiles"][name] = asdict(profile)
         self.save_all(data)
 
+    def default_profile_name(self) -> str:
+        data = self.load_all()
+        value = data.get("default_profile")
+        return str(value) if value else DEFAULT_PROFILE
+
     def get_profile(self, name: str = DEFAULT_PROFILE) -> Profile:
         data = self.load_all()
         raw = data.get("profiles", {}).get(name)
