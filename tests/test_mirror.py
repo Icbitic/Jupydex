@@ -21,9 +21,8 @@ def profile(tmp_path: Path) -> Profile:
     )
 
 
-def test_default_mirror_path_is_project_local(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    assert default_mirror_path("x") == tmp_path / "jupydex-mirrors" / "x"
+def test_default_mirror_path_is_user_level(tmp_path):
+    assert default_mirror_path("x", root=tmp_path) == tmp_path / "x"
 
 
 def test_mirror_path_uses_profile_path(tmp_path):

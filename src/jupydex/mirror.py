@@ -28,9 +28,9 @@ class MirrorConflict(RuntimeError):
     pass
 
 
-def default_mirror_path(profile_name: str, cwd: Path | None = None) -> Path:
-    root = cwd or Path.cwd()
-    return (root / "jupydex-mirrors" / profile_name).resolve()
+def default_mirror_path(profile_name: str, root: Path | None = None) -> Path:
+    mirror_root = root or (Path.home() / "jdx-mirrors")
+    return (mirror_root / profile_name).resolve()
 
 
 def mirror_path_for_profile(profile_name: str, profile: Profile) -> Path:

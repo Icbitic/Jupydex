@@ -4,7 +4,7 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
-jupydex-mirrors/
+jdx-mirrors/
 jupydex.local.json
 *.egg-info/
 dist/

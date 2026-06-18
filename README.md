@@ -4,7 +4,7 @@ Jupydex makes a Jupyter Server feel like a small SSH target for Codex and local 
 
 The core model is simple:
 
-- `jupydex-mirrors/<profile>` is the local shadow copy Codex edits.
+- `~/jdx-mirrors/<profile>` is the local shadow copy Codex edits.
 - Jupyter Contents API handles file sync.
 - Jupyter terminal websockets run commands on the server.
 - `jdx run` syncs local edits first, then streams remote output live.
@@ -38,7 +38,7 @@ Create `jupydex.local.json` in the project root:
   "profile": "default",
   "url": "http://host:8888/lab?token=TOKEN",
   "workspace": "/mnt/code/user/project",
-  "mirror": "jupydex-mirrors/default"
+  "mirror": "jdx-mirrors/default"
 }
 ```
 
@@ -71,7 +71,7 @@ jdx mirror
 By default, mirrors live at:
 
 ```text
-jupydex-mirrors/<profile>
+~/jdx-mirrors/<profile>
 ```
 
 Edit files in that mirror with normal local tools:

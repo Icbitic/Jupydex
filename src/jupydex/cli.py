@@ -17,6 +17,16 @@ from .terminal import run_terminal_command_sync
 from .terminal import interactive_terminal_sync
 
 
+def resolve_mirror_path(path: str | None, profile_name: str) -> Path:
+    if not path:
+        return default_mirror_path(profile_name)
+
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.home() / candidate
+    return candidate.resolve()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="jdx",
@@ -124,7 +134,7 @@ def connect_with_values(
         workspace = client.resolve_workspace(workspace_input)
         client.status()
 
-    mirror_path = Path(mirror).expanduser().resolve() if mirror else default_mirror_path(profile_name)
+    mirror_path = resolve_mirror_path(mirror, profile_name)
     profile = Profile(
         base_url=info.base_url,
         token=info.token,
