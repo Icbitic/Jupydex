@@ -95,6 +95,12 @@ jupydex run -- python sleep.py
 Use `--no-sync` if you intentionally want to run the current remote state
 without pushing local mirror changes first.
 
+Command output is streamed as it arrives, so long-running jobs show live logs:
+
+```bash
+jupydex run -- python train.py
+```
+
 For a more SSH-like interactive session:
 
 ```bash

@@ -101,6 +101,55 @@ def split_before_marker(buffer: str, marker: str) -> tuple[str, str, bool]:
     return buffer, "", False
 
 
+class TerminalOutputParser:
+    def __init__(
+        self,
+        start_marker: str,
+        done_marker: str,
+        done_re: re.Pattern[str],
+        emit: object | None = None,
+    ) -> None:
+        self.start_marker = start_marker
+        self.done_marker = done_marker
+        self.done_re = done_re
+        self.emit = emit
+        self.started = False
+        self.pending = ""
+        self.parts: list[str] = []
+
+    @property
+    def output(self) -> str:
+        return "".join(self.parts).strip("\r\n")
+
+    def feed(self, text: str) -> int | None:
+        self.pending += text
+
+        if not self.started:
+            start_idx = self.pending.find(self.start_marker)
+            if start_idx < 0:
+                self.pending = self.pending[-len(self.start_marker):]
+                return None
+            self.pending = self.pending[start_idx + len(self.start_marker):]
+            self.started = True
+
+        match = self.done_re.search(self.pending)
+        if match:
+            self._flush(self.pending[: match.start()])
+            self.pending = ""
+            return int(match.group(1))
+
+        output, self.pending, _found = split_before_marker(self.pending, self.done_marker)
+        self._flush(output)
+        return None
+
+    def _flush(self, text: str) -> None:
+        if not text:
+            return
+        self.parts.append(text)
+        if self.emit is not None:
+            self.emit(text)
+
+
 async def interactive_terminal(
     client: JupyterClient,
     workspace_command_path: str,
@@ -196,6 +245,7 @@ async def run_terminal_command(
     command: str,
     *,
     timeout: float = 300.0,
+    stream: bool = False,
 ) -> CommandResult:
     try:
         import websockets
@@ -214,20 +264,32 @@ async def run_terminal_command(
     cd_target = shlex.quote(workspace_command_path)
     quoted_command = shlex.quote(command)
     shell_line = (
-        "stty -echo 2>/dev/null; "
-        f"printf '\\n{start}\\n'; "
+        f"printf '{start}'; "
         f"cd {cd_target} && bash -lc {quoted_command}; "
         "__jupydex_status=$?; "
-        f"printf '\\n{done}:%s\\n' \"$__jupydex_status\"\n"
+        f"printf '{done}:%s\\n' \"$__jupydex_status\"\n"
     )
 
-    buffer = ""
     deadline = time.monotonic() + timeout
     timed_out = False
     exit_code = 124
+    stdout_fd = sys.stdout.fileno() if stream else None
+
+    def emit_stdout(text: str) -> None:
+        if stdout_fd is not None:
+            os.write(stdout_fd, text.encode("utf-8", errors="replace"))
+
+    parser = TerminalOutputParser(
+        start,
+        done,
+        done_re,
+        emit=emit_stdout if stream else None,
+    )
 
     try:
         async with websockets.connect(terminal_ws_url(client.base_url, client.token, terminal_name), max_size=None) as ws:
+            await ws.send(json.dumps(["stdin", "stty -echo 2>/dev/null\n"]))
+            await asyncio.sleep(0.1)
             await ws.send(json.dumps(["stdin", shell_line]))
             while True:
                 remaining = deadline - time.monotonic()
@@ -240,10 +302,9 @@ async def run_terminal_command(
                 except asyncio.TimeoutError:
                     continue
 
-                buffer += terminal_payload(raw)
-                match = done_re.search(buffer)
-                if match:
-                    exit_code = int(match.group(1))
+                parsed_exit_code = parser.feed(terminal_payload(raw))
+                if parsed_exit_code is not None:
+                    exit_code = parsed_exit_code
                     break
     finally:
         client.delete_terminal(terminal_name)
@@ -251,7 +312,7 @@ async def run_terminal_command(
     return CommandResult(
         command=command,
         exit_code=exit_code,
-        output=clean_terminal_output(buffer, start, done_re),
+        output=parser.output,
         timed_out=timed_out,
     )
 
@@ -262,6 +323,7 @@ def run_terminal_command_sync(
     command: str,
     *,
     timeout: float = 300.0,
+    stream: bool = False,
 ) -> CommandResult:
     return asyncio.run(
         run_terminal_command(
@@ -269,6 +331,7 @@ def run_terminal_command_sync(
             workspace_command_path,
             command,
             timeout=timeout,
+            stream=stream,
         )
     )
 

@@ -301,10 +301,9 @@ def command_run(args: argparse.Namespace) -> int:
             profile.workspace_input or profile.workspace,
             command,
             timeout=args.timeout,
+            stream=True,
         )
 
-    if result.output:
-        print(result.output)
     if result.timed_out:
         print(f"Command timed out after {args.timeout:g}s", file=sys.stderr)
     return result.exit_code
