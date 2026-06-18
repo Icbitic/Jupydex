@@ -15,11 +15,11 @@ def test_shell_intro_wraps_interactive_bash_with_markers():
 
 def test_split_before_marker_flushes_plain_prompt():
     output, pending, found = split_before_marker(
-        "[jupydex] /mnt/code/liang.zeng/nips/sandbox/workspace-kalen $ ",
+        "[jdx] /mnt/code/liang.zeng/nips/sandbox/workspace-kalen $ ",
         "__JUPYDEX_SHELL_DONE_abc__",
     )
 
-    assert output == "[jupydex] /mnt/code/liang.zeng/nips/sandbox/workspace-kalen $ "
+    assert output == "[jdx] /mnt/code/liang.zeng/nips/sandbox/workspace-kalen $ "
     assert pending == ""
     assert found is False
 

@@ -102,7 +102,7 @@ class ConfigStore:
         data = self.load_all()
         if name not in data.get("profiles", {}):
             raise KeyError(
-                f"No Jupydex profile named {name!r}. Run `jdx profiles` to see available profiles."
+                f"No jdx profile named {name!r}. Run `jdx profiles` to see available profiles."
             )
         data["default_profile"] = name
         self.save_all(data)
@@ -112,7 +112,7 @@ class ConfigStore:
         raw = data.get("profiles", {}).get(name)
         if not raw:
             raise KeyError(
-                f"No Jupydex profile named {name!r}. Run `jdx connect` first."
+                f"No jdx profile named {name!r}. Run `jdx connect` first."
             )
         raw.setdefault("mirror_path", None)
         return Profile(**raw)

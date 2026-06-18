@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -21,7 +22,6 @@ class MirrorSummary:
     pushed: int = 0
     deleted_remote: int = 0
     skipped: int = 0
-    conflicts: int = 0
 
 
 class MirrorConflict(RuntimeError):
@@ -99,8 +99,7 @@ def iter_remote_files(
     client: JupyterClient,
     workspace: str,
     rel_path: str = ".",
-) -> list[dict[str, Any]]:
-    entries: list[dict[str, Any]] = []
+) -> Iterator[dict[str, Any]]:
     for item in client.list_dir(workspace, rel_path):
         typ = item.get("type")
         item_path = str(item.get("path", ""))
@@ -113,10 +112,9 @@ def iter_remote_files(
             child_rel = str(item.get("name", ""))
 
         if typ == "directory":
-            entries.extend(iter_remote_files(client, workspace, child_rel))
+            yield from iter_remote_files(client, workspace, child_rel)
         elif typ == "file":
-            entries.append({**item, "workspace_relative_path": child_rel})
-    return entries
+            yield {**item, "workspace_relative_path": child_rel}
 
 
 def pull_mirror(
@@ -181,10 +179,9 @@ def pull_mirror(
     return summary
 
 
-def iter_local_files(mirror_root: Path) -> list[Path]:
-    paths: list[Path] = []
+def iter_local_files(mirror_root: Path) -> Iterator[Path]:
     if not mirror_root.exists():
-        return paths
+        return
     for root, dirs, files in os.walk(mirror_root):
         root_path = Path(root)
         dirs[:] = [d for d in dirs if d != "__pycache__"]
@@ -192,8 +189,7 @@ def iter_local_files(mirror_root: Path) -> list[Path]:
             path = root_path / name
             if path.name == METADATA_FILE:
                 continue
-            paths.append(path)
-    return paths
+            yield path
 
 
 def relative_to_mirror(mirror_root: Path, path: Path) -> str:
@@ -238,7 +234,6 @@ def push_mirror(
         if tracked and not force:
             expected = tracked.get("remote")
             if remote_model is not None and remote_signature(remote_model) != expected:
-                summary.conflicts += 1
                 raise MirrorConflict(
                     f"Remote changed since last pull: {rel}. Pull first or use --force."
                 )
@@ -270,7 +265,6 @@ def push_mirror(
                 files.pop(rel, None)
                 continue
             if not force and remote_signature(remote_model) != tracked.get("remote"):
-                summary.conflicts += 1
                 raise MirrorConflict(
                     f"Remote changed since last pull: {rel}. Pull first or use --force."
                 )

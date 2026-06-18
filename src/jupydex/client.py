@@ -94,9 +94,6 @@ class JupyterClient:
     def status(self) -> dict[str, object]:
         return self.request("GET", "status").json()
 
-    def kernelspecs(self) -> dict[str, object]:
-        return self.request("GET", "kernelspecs").json()
-
     def contents(
         self,
         path: str = "",

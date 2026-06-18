@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 from .client import JupyterClient, parse_jupyter_url
-from .config import ConfigStore, DEFAULT_PROFILE, Profile, load_connect_params
+from .config import ConfigStore, Profile, load_connect_params
 from .mirror import (
     default_mirror_path,
     mirror_path_for_profile,
@@ -13,8 +13,7 @@ from .mirror import (
     pull_mirror,
     push_mirror,
 )
-from .terminal import run_terminal_command_sync
-from .terminal import interactive_terminal_sync
+from .terminal import interactive_terminal_sync, run_terminal_command_sync
 
 
 def resolve_mirror_path(path: str | None, profile_name: str) -> Path:
@@ -310,9 +309,7 @@ def command_rm(args: argparse.Namespace) -> int:
 
 
 def command_run(args: argparse.Namespace) -> int:
-    command = " ".join(args.remote_command).strip()
-    if command.startswith("-- "):
-        command = command[3:].strip()
+    command = remote_command_text(args.remote_command)
     if not command:
         raise SystemExit("Usage: jdx run -- <command>")
 
@@ -331,6 +328,13 @@ def command_run(args: argparse.Namespace) -> int:
     if result.timed_out:
         print(f"Command timed out after {args.timeout:g}s", file=sys.stderr)
     return result.exit_code
+
+
+def remote_command_text(parts: list[str]) -> str:
+    command = " ".join(parts).strip()
+    if command.startswith("-- "):
+        return command[3:].strip()
+    return command
 
 
 def sync_before_remote_action(
@@ -403,6 +407,10 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("Interrupted", file=sys.stderr)
         return 130
+    except KeyError as exc:
+        message = exc.args[0] if exc.args else str(exc)
+        print(f"jdx: {message}", file=sys.stderr)
+        return 1
     except Exception as exc:
         print(f"jdx: {exc}", file=sys.stderr)
         return 1

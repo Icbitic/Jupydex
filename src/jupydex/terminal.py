@@ -91,12 +91,12 @@ def terminal_size() -> tuple[int, int]:
 
 def shell_intro_command(workspace_command_path: str, ready_marker: str) -> str:
     cd_target = shlex.quote(workspace_command_path)
-    prompt = "[jupydex] \\w $ "
+    prompt = "[jdx] \\w $ "
     return (
         f"cd {cd_target}; "
         "export TERM=${TERM:-xterm-256color}; "
         "stty echo 2>/dev/null; "
-        f"printf '\\n{ready_marker}\\n[jupydex] remote shell in %s\\n' \"$PWD\"; "
+        f"printf '\\n{ready_marker}\\n[jdx] remote shell in %s\\n' \"$PWD\"; "
         f"exec env PS1={shlex.quote(prompt)} bash --noprofile --norc -i\n"
     )
 
@@ -279,7 +279,7 @@ async def run_terminal_command(
     except ImportError as exc:
         raise RuntimeError(
             "The `websockets` package is required for `jdx run`. "
-            "Install with `python -m pip install -e .`."
+            "Install with `uv sync --dev`."
         ) from exc
 
     terminal_name = client.create_terminal()
