@@ -8,6 +8,7 @@ import re
 import select
 import secrets
 import shlex
+import signal
 import shutil
 import sys
 import termios
@@ -24,6 +25,36 @@ class CommandResult:
     exit_code: int
     output: str
     timed_out: bool = False
+
+
+class TerminalCleanup:
+    def __init__(self, client: JupyterClient, terminal_name: str) -> None:
+        self.client = client
+        self.terminal_name = terminal_name
+        self.deleted = False
+        self.old_signal_handlers: dict[int, object] = {}
+
+    def install_signal_handlers(self) -> None:
+        for signum in (signal.SIGHUP, signal.SIGTERM):
+            self.old_signal_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, self._cleanup_from_signal)
+
+    def restore_signal_handlers(self) -> None:
+        for signum, handler in self.old_signal_handlers.items():
+            signal.signal(signum, handler)
+        self.old_signal_handlers.clear()
+
+    def cleanup(self) -> None:
+        if self.deleted:
+            return
+        self.deleted = True
+        self.client.delete_terminal(self.terminal_name, wait=True)
+
+    def _cleanup_from_signal(self, signum: int, _frame: object) -> None:
+        try:
+            self.cleanup()
+        finally:
+            raise SystemExit(128 + signum)
 
 
 def websocket_base_url(base_url: str) -> str:
@@ -148,6 +179,8 @@ async def interactive_terminal(
         ) from exc
 
     terminal_name = client.create_terminal()
+    cleanup = TerminalCleanup(client, terminal_name)
+    cleanup.install_signal_handlers()
     marker = secrets.token_hex(8)
     ready_marker = f"__JUPYDEX_SHELL_READY_{marker}__"
     stdin_fd = sys.stdin.fileno()
@@ -227,9 +260,10 @@ async def interactive_terminal(
                 resize_task.cancel()
                 await asyncio.gather(stdin_task, resize_task, return_exceptions=True)
     finally:
+        cleanup.restore_signal_handlers()
         if old_tty_attrs is not None:
             termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty_attrs)
-        client.delete_terminal(terminal_name, wait=True)
+        cleanup.cleanup()
 
 
 async def run_terminal_command(
@@ -249,6 +283,8 @@ async def run_terminal_command(
         ) from exc
 
     terminal_name = client.create_terminal()
+    cleanup = TerminalCleanup(client, terminal_name)
+    cleanup.install_signal_handlers()
     marker = secrets.token_hex(8)
     start = f"__JUPYDEX_START_{marker}__"
     done = f"__JUPYDEX_DONE_{marker}__"
@@ -300,7 +336,8 @@ async def run_terminal_command(
                     exit_code = parsed_exit_code
                     break
     finally:
-        client.delete_terminal(terminal_name)
+        cleanup.restore_signal_handlers()
+        cleanup.cleanup()
 
     return CommandResult(
         command=command,

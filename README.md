@@ -147,4 +147,5 @@ Paths passed to file commands are workspace-relative. A leading `/` means worksp
 - Tokens are stored in the local Jupydex profile config. Prefer short-lived development tokens.
 - `push` checks whether tracked remote files changed since the last pull and stops on conflicts unless `--force` is used.
 - `run` and `shell` sync dirty mirror changes first by default. Use `--no-sync` to skip that.
+- If the local terminal receives `SIGHUP` or `SIGTERM`, `jdx` tries to close only the Jupyter terminal it created for that command. An uncatchable `SIGKILL` cannot be cleaned up by any CLI.
 - The mirror sync state is stored as `jupydex-mirror-state.json` inside each mirror and is not pushed to the Jupyter workspace.

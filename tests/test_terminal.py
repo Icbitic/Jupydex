@@ -1,6 +1,39 @@
 import re
+import signal
 
-from jupydex.terminal import TerminalOutputParser
+from jupydex.terminal import TerminalCleanup, TerminalOutputParser
+
+
+class FakeClient:
+    def __init__(self):
+        self.deleted = []
+
+    def delete_terminal(self, name, *, wait=False):
+        self.deleted.append((name, wait))
+
+
+def test_terminal_cleanup_is_idempotent():
+    client = FakeClient()
+    cleanup = TerminalCleanup(client, "abc")
+
+    cleanup.cleanup()
+    cleanup.cleanup()
+
+    assert client.deleted == [("abc", True)]
+
+
+def test_terminal_cleanup_signal_exits_after_cleanup():
+    client = FakeClient()
+    cleanup = TerminalCleanup(client, "abc")
+
+    try:
+        cleanup._cleanup_from_signal(signal.SIGTERM, None)
+    except SystemExit as exc:
+        assert exc.code == 128 + signal.SIGTERM
+    else:
+        raise AssertionError("Expected SystemExit")
+
+    assert client.deleted == [("abc", True)]
 
 
 def test_terminal_output_parser_streams_before_done_marker():
