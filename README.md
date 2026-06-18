@@ -109,7 +109,9 @@ jupydex shell
 
 This opens a Jupyter terminal websocket in the selected workspace. It is not a
 real SSH daemon, but it behaves like a local terminal connected to the remote
-Jupyter server. Exit with `exit` or `Ctrl-D`.
+Jupyter server. It uses raw passthrough after setup, so full-screen terminal
+apps such as `vim`, `less`, and `top` can take over the terminal. Exit with
+`exit` or `Ctrl-D`.
 
 File transfer:
 

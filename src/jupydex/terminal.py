@@ -70,18 +70,15 @@ def terminal_size() -> tuple[int, int]:
     return size.lines, size.columns
 
 
-def shell_intro_command(workspace_command_path: str, start_marker: str, done_marker: str) -> str:
+def shell_intro_command(workspace_command_path: str, ready_marker: str) -> str:
     cd_target = shlex.quote(workspace_command_path)
     prompt = "[jupydex] \\w $ "
     return (
         f"cd {cd_target}; "
         "export TERM=${TERM:-xterm-256color}; "
-        f"export PS1={shlex.quote(prompt)}; "
-        f"printf '\\n{start_marker}\\n[jupydex] remote shell in %s\\n' \"$PWD\"; "
         "stty echo 2>/dev/null; "
-        "bash --noprofile --norc -i; "
-        "__jupydex_shell_status=$?; "
-        f"printf '\\n{done_marker}:%s\\n' \"$__jupydex_shell_status\"\n"
+        f"printf '\\n{ready_marker}\\n[jupydex] remote shell in %s\\n' \"$PWD\"; "
+        f"exec env PS1={shlex.quote(prompt)} bash --noprofile --norc -i\n"
     )
 
 
@@ -164,8 +161,7 @@ async def interactive_terminal(
 
     terminal_name = client.create_terminal()
     marker = secrets.token_hex(8)
-    start_marker = f"__JUPYDEX_SHELL_START_{marker}__"
-    done_marker = f"__JUPYDEX_SHELL_DONE_{marker}__"
+    ready_marker = f"__JUPYDEX_SHELL_READY_{marker}__"
     stdin_fd = sys.stdin.fileno()
     stdout_fd = sys.stdout.fileno()
     old_tty_attrs = termios.tcgetattr(stdin_fd) if sys.stdin.isatty() else None
@@ -183,33 +179,39 @@ async def interactive_terminal(
                 break
             await ws.send(json.dumps(["stdin", data.decode("utf-8", errors="ignore")]))
 
-    async def recv_stdout(ws: object) -> None:
-        started = False
+    async def wait_until_ready(ws: object) -> None:
         pending = ""
         while True:
             raw = await ws.recv()
             pending += terminal_payload(raw)
-
-            if not started:
-                start_idx = pending.find(start_marker)
-                if start_idx < 0:
-                    pending = pending[-len(start_marker):]
-                    continue
-                pending = pending[start_idx + len(start_marker):]
-                started = True
-
-            done_idx = pending.find(done_marker)
-            if done_idx >= 0:
-                output = pending[:done_idx].strip("\r\n")
+            ready_idx = pending.find(ready_marker)
+            if ready_idx >= 0:
+                output = pending[ready_idx + len(ready_marker):].lstrip("\r\n")
                 if output:
                     os.write(stdout_fd, output.encode("utf-8", errors="replace"))
-                    os.write(stdout_fd, b"\n")
-                stop_event.set()
                 return
 
-            output, pending, _found = split_before_marker(pending, done_marker)
-            if output:
-                os.write(stdout_fd, output.encode("utf-8", errors="replace"))
+            pending = pending[-len(ready_marker):]
+
+    async def recv_stdout(ws: object) -> None:
+        try:
+            while True:
+                raw = await ws.recv()
+                payload = terminal_payload(raw)
+                if payload:
+                    os.write(stdout_fd, payload.encode("utf-8", errors="replace"))
+        except websockets.exceptions.ConnectionClosed:
+            stop_event.set()
+
+    async def sync_terminal_size(ws: object) -> None:
+        last_size: tuple[int, int] | None = None
+        while not stop_event.is_set():
+            current_size = terminal_size()
+            if current_size != last_size:
+                rows, cols = current_size
+                await ws.send(json.dumps(["set_size", rows, cols]))
+                last_size = current_size
+            await asyncio.sleep(0.5)
 
     try:
         async with websockets.connect(
@@ -220,19 +222,22 @@ async def interactive_terminal(
             await ws.send(json.dumps(["set_size", rows, cols]))
             await ws.send(json.dumps(["stdin", "stty -echo 2>/dev/null\n"]))
             await asyncio.sleep(0.1)
-            await ws.send(json.dumps(["stdin", shell_intro_command(workspace_command_path, start_marker, done_marker)]))
+            await ws.send(json.dumps(["stdin", shell_intro_command(workspace_command_path, ready_marker)]))
+            await wait_until_ready(ws)
 
             if old_tty_attrs is not None:
                 tty.setraw(stdin_fd)
 
             stdin_task = asyncio.create_task(send_stdin(ws))
             stdout_task = asyncio.create_task(recv_stdout(ws))
+            resize_task = asyncio.create_task(sync_terminal_size(ws))
             try:
                 await stdout_task
             finally:
                 stop_event.set()
                 stdin_task.cancel()
-                await asyncio.gather(stdin_task, return_exceptions=True)
+                resize_task.cancel()
+                await asyncio.gather(stdin_task, resize_task, return_exceptions=True)
     finally:
         if old_tty_attrs is not None:
             termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty_attrs)
