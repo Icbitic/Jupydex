@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 from .client import JupyterClient, parse_jupyter_url
-from .config import Profile, ProfileManager
+from .config import Profile, ProfileManager, config_path
 from .mirror import (
     default_mirror_path,
     mirror_path_for_profile,
@@ -42,12 +42,21 @@ def build_parser() -> argparse.ArgumentParser:
     connect.add_argument("--workspace", help="Existing workspace path to use")
     connect.add_argument("--mirror", help="Local shadow mirror path")
 
-    default = sub.add_parser("default", help="Show or set the default profile")
-    default.add_argument("profile_name", nargs="?", help="Profile to use when --profile is omitted")
+    profile = sub.add_parser(
+        "profile",
+        help="Manage local profiles",
+        description="Manage local profiles. Run without an action to open the interactive manager.",
+    )
+    profile_sub = profile.add_subparsers(dest="profile_action", metavar="[action]")
 
-    sub.add_parser("profiles", help="List saved profiles")
-    remove_profile = sub.add_parser("remove-profile", help="Remove a saved profile")
+    profile_sub.add_parser("list", help="List saved profiles")
+    default = profile_sub.add_parser("default", help="Show or set the default profile")
+    default.add_argument("profile_name", nargs="?", help="Profile to use when --profile is omitted")
+    remove_profile = profile_sub.add_parser("remove", help="Remove a saved profile")
     remove_profile.add_argument("profile_name", help="Profile to remove")
+    show_profile = profile_sub.add_parser("show", help="Show profile details")
+    show_profile.add_argument("profile_name", nargs="?", help="Profile to show")
+    profile_sub.add_parser("path", help="Print the profile config path")
 
     sub.add_parser("status", help="Show Jupyter server status")
     sub.add_parser("mirror", help="Print the local shadow mirror path")
@@ -235,17 +244,82 @@ def print_connection(
         print(f"Default profile: {profile_name}")
 
 
-def command_profiles(_args: argparse.Namespace) -> int:
-    profiles = ProfileManager().list()
-    if not profiles:
-        print("No profiles saved")
-        return 0
-    for name, profile in sorted(profiles.items()):
-        print(f"{name}\t{profile.base_url}\t{profile.workspace}")
+def command_profile(args: argparse.Namespace) -> int:
+    action = args.profile_action
+    if action is None:
+        return command_profile_interactive(args)
+    if action == "list":
+        return command_profile_list(args)
+    if action == "default":
+        return command_profile_default(args)
+    if action == "remove":
+        return command_profile_remove(args)
+    if action == "show":
+        return command_profile_show(args)
+    if action == "path":
+        return command_profile_path(args)
+    raise ValueError(f"Unknown profile action: {action}")
+
+
+def command_profile_interactive(_args: argparse.Namespace) -> int:
+    profiles = ProfileManager()
+    while True:
+        print()
+        print("jdx profile manager")
+        print(f"Config: {config_path()}")
+        print_profile_table(profiles)
+        print()
+        print("1) Connect new profile")
+        print("2) Set default profile")
+        print("3) Remove profile")
+        print("4) Show profile details")
+        print("5) Print config path")
+        print("q) Quit")
+
+        try:
+            choice = prompt("Select action", default="q").lower()
+        except EOFError:
+            return 0
+        if choice in ("q", "quit", "exit"):
+            return 0
+
+        try:
+            if choice in ("1", "connect", "new"):
+                interactive_connect_profile(profiles)
+            elif choice in ("2", "default"):
+                interactive_set_default(profiles)
+            elif choice in ("3", "remove", "delete"):
+                interactive_remove_profile(profiles)
+            elif choice in ("4", "show", "details"):
+                interactive_show_profile(profiles)
+            elif choice in ("5", "path"):
+                print(config_path())
+            else:
+                print(f"Unknown action: {choice}")
+        except EOFError:
+            return 0
+        except Exception as exc:
+            print(f"jdx: {exc}", file=sys.stderr)
+
+
+def command_profile_list(_args: argparse.Namespace) -> int:
+    print_profile_table(ProfileManager())
     return 0
 
 
-def command_default(args: argparse.Namespace) -> int:
+def print_profile_table(profiles: ProfileManager) -> bool:
+    items = profiles.list()
+    default_name = profiles.default_name()
+    if not items:
+        print("No profiles saved")
+        return False
+    for name, profile in sorted(items.items()):
+        marker = "*" if name == default_name else " "
+        print(f"{marker} {name}\t{profile.base_url}\t{profile.workspace}")
+    return True
+
+
+def command_profile_default(args: argparse.Namespace) -> int:
     profiles = ProfileManager()
     if not args.profile_name:
         print(profiles.default_name())
@@ -256,7 +330,7 @@ def command_default(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_remove_profile(args: argparse.Namespace) -> int:
+def command_profile_remove(args: argparse.Namespace) -> int:
     default_name = ProfileManager().remove(args.profile_name)
     print(f"Removed profile {args.profile_name!r}")
     if default_name:
@@ -264,6 +338,140 @@ def command_remove_profile(args: argparse.Namespace) -> int:
     else:
         print("No profiles saved")
     return 0
+
+
+def command_profile_show(args: argparse.Namespace) -> int:
+    profiles = ProfileManager()
+    profile_name = args.profile_name or profiles.default_name()
+    print_profile_details(profile_name, profiles.get(profile_name))
+    return 0
+
+
+def command_profile_path(_args: argparse.Namespace) -> int:
+    print(config_path())
+    return 0
+
+
+def interactive_connect_profile(profiles: ProfileManager) -> None:
+    url = prompt_required("JupyterLab URL")
+    token = prompt("Token if not in URL", default="")
+    token = token or None
+    info = parse_jupyter_url(url, token)
+    default_name = auto_profile_name(info.base_url, info.token)
+    profile_name = prompt("Profile name", default=default_name)
+    workspace = prompt("Existing workspace path, blank to create one", default="")
+    mirror = prompt("Local mirror path, blank for default", default="") or None
+
+    if workspace:
+        connect_existing_workspace(
+            profiles=profiles,
+            profile_name=profile_name,
+            url=url,
+            token=token,
+            workspace_input=workspace,
+            mirror=mirror,
+        )
+        if confirm("Make this the default profile", default=True):
+            profiles.set_default(profile_name)
+            print(f"Default profile: {profile_name}")
+        return
+
+    connect_new_workspace(
+        profiles=profiles,
+        profile_name=profile_name,
+        url=url,
+        token=token,
+        mirror=mirror,
+    )
+
+
+def interactive_set_default(profiles: ProfileManager) -> None:
+    name = choose_profile(profiles, "Profile to make default")
+    if not name:
+        return
+    profiles.set_default(name)
+    print(f"Default profile: {name}")
+
+
+def interactive_remove_profile(profiles: ProfileManager) -> None:
+    name = choose_profile(profiles, "Profile to remove")
+    if not name:
+        return
+    if not confirm(f"Remove profile {name!r}", default=False):
+        print("Cancelled")
+        return
+    default_name = profiles.remove(name)
+    print(f"Removed profile {name!r}")
+    if default_name:
+        print(f"Default profile: {default_name}")
+    else:
+        print("No profiles saved")
+
+
+def interactive_show_profile(profiles: ProfileManager) -> None:
+    name = choose_profile(profiles, "Profile to show")
+    if name:
+        print_profile_details(name, profiles.get(name))
+
+
+def choose_profile(profiles: ProfileManager, label: str) -> str | None:
+    names = sorted(profiles.list())
+    if not names:
+        print("No profiles saved")
+        return None
+
+    for idx, name in enumerate(names, start=1):
+        marker = "*" if name == profiles.default_name() else " "
+        print(f"{idx}) {marker} {name}")
+
+    value = prompt(label, default="")
+    if not value:
+        return None
+    if value.isdigit():
+        idx = int(value)
+        if 1 <= idx <= len(names):
+            return names[idx - 1]
+    if value in names:
+        return value
+    print(f"No profile selected for {value!r}")
+    return None
+
+
+def print_profile_details(name: str, profile: Profile) -> None:
+    print(f"name: {name}")
+    print(f"server: {profile.base_url}")
+    print(f"token: {redact_token(profile.token)}")
+    print(f"workspace: {profile.workspace}")
+    print(f"workspace input: {profile.workspace_input}")
+    print(f"mirror: {profile.mirror_path or default_mirror_path(name)}")
+
+
+def redact_token(token: str) -> str:
+    if len(token) <= 10:
+        return "*" * len(token)
+    return f"{token[:4]}...{token[-4:]}"
+
+
+def prompt(label: str, *, default: str) -> str:
+    suffix = f" [{default}]" if default else ""
+    value = input(f"{label}{suffix}: ").strip()
+    return value or default
+
+
+def prompt_required(label: str) -> str:
+    while True:
+        value = prompt(label, default="")
+        if value:
+            return value
+        print(f"{label} is required")
+
+
+def confirm(label: str, *, default: bool) -> bool:
+    default_text = "Y/n" if default else "y/N"
+    value = prompt(f"{label}? {default_text}", default="").lower()
+    if not value:
+        return default
+    return value in ("y", "yes")
 
 
 def command_status(args: argparse.Namespace) -> int:
@@ -459,9 +667,7 @@ def command_shell(args: argparse.Namespace) -> int:
 
 COMMANDS = {
     "connect": command_connect,
-    "default": command_default,
-    "remove-profile": command_remove_profile,
-    "profiles": command_profiles,
+    "profile": command_profile,
     "status": command_status,
     "mirror": command_mirror,
     "pull": command_pull,
@@ -482,7 +688,7 @@ COMMANDS = {
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.profile is None and args.command_name != "connect":
+    if args.profile is None and args.command_name not in ("connect", "profile"):
         args.profile = ProfileManager().default_name()
     try:
         return COMMANDS[args.command_name](args)

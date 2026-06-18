@@ -41,13 +41,23 @@ jdx connect 'http://host:8888/lab?token=TOKEN'
 
 Profiles are stored in the global jdx config at `~/.config/jupydex/config.json`.
 
-List profiles and choose the one used when `--profile` is omitted:
+Open the interactive profile manager:
 
 ```bash
-jdx profiles
-jdx default lab1
-jdx default
-jdx remove-profile old-lab
+jdx profile
+```
+
+The profile manager can connect a new profile, set the default, remove a profile, show profile details, and print the config path.
+
+The same operations are also available as scriptable subcommands:
+
+```bash
+jdx profile list
+jdx profile default lab1
+jdx profile default
+jdx profile remove old-lab
+jdx profile show lab1
+jdx profile path
 ```
 
 To bind a profile to an existing workspace instead, pass `--workspace`:
@@ -114,9 +124,12 @@ The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`
 ```bash
 jdx connect URL          # quick profile and workspace setup
 jdx status              # server, workspace, and mirror info
-jdx default [profile]   # show or set default profile
-jdx profiles            # saved local profiles
-jdx remove-profile name  # remove a saved local profile
+jdx profile             # interactive profile manager
+jdx profile list        # list saved local profiles
+jdx profile default name # set the default profile
+jdx profile remove name  # remove a saved local profile
+jdx profile show name    # show profile details
+jdx profile path         # print the profile config path
 jdx mirror              # print local mirror path
 jdx dirty               # local mirror changes since last sync
 

@@ -68,7 +68,7 @@ class ConfigStore:
         profiles = data.get("profiles", {})
         if name not in profiles:
             raise KeyError(
-                f"No jdx profile named {name!r}. Run `jdx profiles` to see available profiles."
+                f"No jdx profile named {name!r}. Run `jdx profile` to see available profiles."
             )
 
         profiles.pop(name)
@@ -91,7 +91,7 @@ class ConfigStore:
         data = self.load_all()
         if name not in data.get("profiles", {}):
             raise KeyError(
-                f"No jdx profile named {name!r}. Run `jdx profiles` to see available profiles."
+                f"No jdx profile named {name!r}. Run `jdx profile` to see available profiles."
             )
         data["default_profile"] = name
         self.save_all(data)
