@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 import sys
 
-from .client import JupyterClient, parse_jupyter_url
+from .client import JupyterClient, parse_jupyter_url, token_from_url
 from .config import Profile, ProfileManager, config_path
 from .mirror import (
     default_mirror_path,
@@ -354,8 +354,9 @@ def command_profile_path(_args: argparse.Namespace) -> int:
 
 def interactive_connect_profile(profiles: ProfileManager) -> None:
     url = prompt_required("JupyterLab URL")
-    token = prompt("Token if not in URL", default="")
-    token = token or None
+    token = token_from_url(url)
+    if not token:
+        token = prompt_required("Token")
     info = parse_jupyter_url(url, token)
     default_name = auto_profile_name(info.base_url, info.token)
     profile_name = prompt("Profile name", default=default_name)

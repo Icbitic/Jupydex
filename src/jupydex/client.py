@@ -24,8 +24,7 @@ def parse_jupyter_url(url: str, token: str | None = None) -> ServerInfo:
     if not parsed.scheme or not parsed.netloc:
         raise ValueError("Expected a full Jupyter URL such as http://host:8888/lab?token=...")
 
-    query = urllib.parse.parse_qs(parsed.query)
-    resolved_token = token or (query.get("token", [None])[0])
+    resolved_token = token or token_from_url(url)
     if not resolved_token:
         raise ValueError("No token found. Pass --token or include ?token=... in the URL.")
 
@@ -38,6 +37,12 @@ def parse_jupyter_url(url: str, token: str | None = None) -> ServerInfo:
 
     base_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
     return ServerInfo(base_url=base_url.rstrip("/"), token=resolved_token)
+
+
+def token_from_url(url: str) -> str | None:
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    token = query.get("token", [None])[0]
+    return token or None
 
 
 def workspace_relative_path(path: str) -> str:
