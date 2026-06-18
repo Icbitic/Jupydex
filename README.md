@@ -31,12 +31,13 @@ After that, use `jdx ...` directly from any shell.
 
 ## Configure
 
-Save a Jupyter server as a named profile:
+Connect with a JupyterLab URL:
 
 ```bash
-jdx --profile lab1 connect 'http://host:8888/lab?token=TOKEN' \
-  --workspace /mnt/code/user/project
+jdx connect 'http://host:8888/lab?token=TOKEN'
 ```
+
+`connect` extracts the token, creates a short profile name such as `jdx-a1b2c3`, creates a workspace directory with that same name on the Jupyter server, and makes the new profile the default.
 
 Profiles are stored in the global jdx config at `~/.config/jupydex/config.json`.
 
@@ -46,6 +47,13 @@ List profiles and choose the one used when `--profile` is omitted:
 jdx profiles
 jdx default lab1
 jdx default
+```
+
+To bind a profile to an existing workspace instead, pass `--workspace`:
+
+```bash
+jdx --profile lab1 connect 'http://host:8888/lab?token=TOKEN' \
+  --workspace /mnt/code/user/project
 ```
 
 `workspace` may be either an absolute server path or a Jupyter contents path. If you pass an absolute path, Jupydex searches for the matching path under the Jupyter server root.
@@ -103,6 +111,7 @@ The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`
 ## Commands
 
 ```bash
+jdx connect URL          # quick profile and workspace setup
 jdx status              # server, workspace, and mirror info
 jdx default [profile]   # show or set default profile
 jdx profiles            # saved local profiles

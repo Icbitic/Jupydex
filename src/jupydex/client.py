@@ -199,20 +199,28 @@ class JupyterClient:
             raise JupyterError(f"MKDIR contents/{path} failed: {response.status_code} {response.text}")
         return response.json()
 
-    def ensure_dir(self, workspace: str, path: str) -> None:
+    def ensure_contents_dir(self, path: str) -> str:
         path = workspace_relative_path(path)
         if not path:
-            return
+            raise ValueError("Directory path cannot be empty")
 
         parts = path.split("/")
         for idx in range(1, len(parts) + 1):
             current = "/".join(parts[:idx])
-            model = self.contents(self.under_workspace(workspace, current), content=False, require_ok=False)
+            model = self.contents(current, content=False, require_ok=False)
             if model is None:
-                self.mkdir(workspace, current)
+                self.mkdir("", current)
                 continue
             if model.get("type") != "directory":
                 raise ValueError(f"Remote path exists but is not a directory: {current}")
+
+        return path
+
+    def ensure_dir(self, workspace: str, path: str) -> None:
+        path = workspace_relative_path(path)
+        if not path:
+            return
+        self.ensure_contents_dir(posixpath.join(workspace.strip("/"), path))
 
     def delete(self, workspace: str, path: str) -> None:
         response = self.http.delete(self.content_url(self.under_workspace(workspace, path)))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 import sys
 
@@ -38,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     connect = sub.add_parser("connect", help="Create or update a Jupyter profile")
     connect.add_argument("url", help="JupyterLab/server URL, optionally with ?token=...")
     connect.add_argument("--token", help="Token if not included in the URL")
-    connect.add_argument("--workspace", required=True, help="Workspace path to use")
+    connect.add_argument("--workspace", help="Existing workspace path to use")
     connect.add_argument("--mirror", help="Local shadow mirror path")
 
     default = sub.add_parser("default", help="Show or set the default profile")
@@ -111,8 +112,19 @@ def print_listing(entries: list[dict[str, object]]) -> None:
 
 
 def command_connect(args: argparse.Namespace) -> int:
-    return connect_with_values(
-        profile_name=args.profile,
+    profiles = ProfileManager()
+    if not args.workspace:
+        return connect_new_workspace(
+            profiles=profiles,
+            profile_name=args.profile,
+            url=args.url,
+            token=args.token,
+            mirror=args.mirror,
+        )
+
+    return connect_existing_workspace(
+        profiles=profiles,
+        profile_name=args.profile or profiles.default_name(),
         url=args.url,
         token=args.token,
         workspace_input=args.workspace,
@@ -120,8 +132,9 @@ def command_connect(args: argparse.Namespace) -> int:
     )
 
 
-def connect_with_values(
+def connect_existing_workspace(
     *,
+    profiles: ProfileManager,
     profile_name: str,
     url: str,
     token: str | None,
@@ -141,12 +154,82 @@ def connect_with_values(
         workspace_input=workspace_input,
         mirror_path=str(mirror_path),
     )
-    ProfileManager().save(profile_name, profile)
+    profiles.save(profile_name, profile)
+    print_connection(profile_name, info.base_url, workspace, mirror_path)
+    return 0
+
+
+def connect_new_workspace(
+    *,
+    profiles: ProfileManager,
+    profile_name: str | None,
+    url: str,
+    token: str | None,
+    mirror: str | None,
+) -> int:
+    info = parse_jupyter_url(url, token)
+    if profile_name:
+        resolved_name = profile_name
+    else:
+        resolved_name = auto_profile_name(info.base_url, info.token)
+        reject_profile_collision(profiles, resolved_name, info.base_url, info.token)
+    workspace = resolved_name
+
+    with JupyterClient(info.base_url, info.token) as client:
+        client.status()
+        client.ensure_contents_dir(workspace)
+
+    mirror_path = resolve_mirror_path(mirror, resolved_name)
+    profile = Profile(
+        base_url=info.base_url,
+        token=info.token,
+        workspace=workspace,
+        workspace_input=workspace,
+        mirror_path=str(mirror_path),
+    )
+    profiles.save(resolved_name, profile)
+    profiles.set_default(resolved_name)
+
+    print_connection(resolved_name, info.base_url, workspace, mirror_path, default=True)
+    return 0
+
+
+def auto_profile_name(base_url: str, token: str) -> str:
+    digest = hashlib.sha256(f"{base_url}\0{token}".encode("utf-8")).hexdigest()
+    return f"jdx-{digest[:6]}"
+
+
+def reject_profile_collision(
+    profiles: ProfileManager,
+    name: str,
+    base_url: str,
+    token: str,
+) -> None:
+    existing = profiles.list().get(name)
+    if existing is None:
+        return
+    if existing.base_url == base_url and existing.token == token:
+        return
+    raise ValueError(
+        f"Profile {name!r} already exists for another server. "
+        "Use `jdx --profile NAME connect URL` to choose a name."
+    )
+
+
+def print_connection(
+    profile_name: str,
+    base_url: str,
+    workspace: str,
+    mirror_path: Path,
+    *,
+    default: bool = False,
+) -> None:
     print(f"Connected profile {profile_name!r}")
-    print(f"Server: {info.base_url}")
+    print(f"Server: {base_url}")
     print(f"Workspace: {workspace}")
     print(f"Mirror: {mirror_path}")
-    return 0
+    if default:
+        print(f"Default profile: {profile_name}")
 
 
 def command_profiles(_args: argparse.Namespace) -> int:
@@ -385,7 +468,7 @@ COMMANDS = {
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.profile is None:
+    if args.profile is None and args.command_name != "connect":
         args.profile = ProfileManager().default_name()
     try:
         return COMMANDS[args.command_name](args)
