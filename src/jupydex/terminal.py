@@ -85,6 +85,22 @@ def shell_intro_command(workspace_command_path: str, start_marker: str, done_mar
     )
 
 
+def split_before_marker(buffer: str, marker: str) -> tuple[str, str, bool]:
+    marker_idx = buffer.find(marker)
+    if marker_idx >= 0:
+        return buffer[:marker_idx], buffer[marker_idx:], True
+
+    keep_len = 0
+    max_len = min(len(buffer), len(marker) - 1)
+    for candidate_len in range(1, max_len + 1):
+        if buffer.endswith(marker[:candidate_len]):
+            keep_len = candidate_len
+
+    if keep_len:
+        return buffer[:-keep_len], buffer[-keep_len:], False
+    return buffer, "", False
+
+
 async def interactive_terminal(
     client: JupyterClient,
     workspace_command_path: str,
@@ -142,12 +158,9 @@ async def interactive_terminal(
                 stop_event.set()
                 return
 
-            keep = max(len(done_marker) - 1, 0)
-            if len(pending) > keep:
-                output = pending[:-keep] if keep else pending
-                if output:
-                    os.write(stdout_fd, output.encode("utf-8", errors="replace"))
-                pending = pending[-keep:] if keep else ""
+            output, pending, _found = split_before_marker(pending, done_marker)
+            if output:
+                os.write(stdout_fd, output.encode("utf-8", errors="replace"))
 
     try:
         async with websockets.connect(
