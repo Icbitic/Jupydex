@@ -271,7 +271,7 @@ async def run_terminal_command(
     workspace_command_path: str,
     command: str,
     *,
-    timeout: float = 300.0,
+    timeout: float | None = None,
     stream: bool = False,
 ) -> CommandResult:
     try:
@@ -299,7 +299,7 @@ async def run_terminal_command(
         f"printf '{done}:%s\\n' \"$__jupydex_status\"\n"
     )
 
-    deadline = time.monotonic() + timeout
+    deadline = None if timeout is None else time.monotonic() + timeout
     timed_out = False
     exit_code = 124
     stdout_fd = sys.stdout.fileno() if stream else None
@@ -321,13 +321,16 @@ async def run_terminal_command(
             await asyncio.sleep(0.1)
             await ws.send(json.dumps(["stdin", shell_line]))
             while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    timed_out = True
-                    break
+                recv_timeout = 1.0
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    recv_timeout = min(recv_timeout, remaining)
 
                 try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=min(1.0, remaining))
+                    raw = await asyncio.wait_for(ws.recv(), timeout=recv_timeout)
                 except asyncio.TimeoutError:
                     continue
 
@@ -352,7 +355,7 @@ def run_terminal_command_sync(
     workspace_command_path: str,
     command: str,
     *,
-    timeout: float = 300.0,
+    timeout: float | None = None,
     stream: bool = False,
 ) -> CommandResult:
     return asyncio.run(

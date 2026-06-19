@@ -103,7 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
     rm.add_argument("path")
 
     run = sub.add_parser("run", help="Sync local mirror changes, then run a command in the selected workspace")
-    run.add_argument("--timeout", type=float, default=300.0)
+    run.add_argument(
+        "--timeout",
+        type=parse_timeout,
+        default=None,
+        help="Wall-clock timeout in seconds; default is no timeout. Use 0, none, or off to disable.",
+    )
     run.add_argument("--no-sync", action="store_true", help="Run without pushing local mirror changes first")
     run.add_argument("--force-sync", action="store_true", help="Overwrite remote changes while syncing before run")
     run.add_argument("remote_command", nargs=argparse.REMAINDER)
@@ -628,6 +633,19 @@ def command_run(args: argparse.Namespace) -> int:
     if result.timed_out:
         print(f"Command timed out after {args.timeout:g}s", file=sys.stderr)
     return result.exit_code
+
+
+def parse_timeout(value: str) -> float | None:
+    normalized = value.strip().lower()
+    if normalized in ("0", "none", "off", "no", "never"):
+        return None
+    try:
+        timeout = float(normalized)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Expected seconds, 0, none, or off") from exc
+    if timeout <= 0:
+        return None
+    return timeout
 
 
 def remote_command_text(parts: list[str]) -> str:

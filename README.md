@@ -114,6 +114,13 @@ jdx run -- python sleep.py
 jdx run -- python train.py
 ```
 
+`run` has no wall-clock timeout by default. Add one only when you want the remote command stopped after a fixed duration:
+
+```bash
+jdx run --timeout 600 -- python train.py
+jdx run --timeout none -- python train.py
+```
+
 Use `--no-sync` when you intentionally want to run the current remote state without pushing local edits:
 
 ```bash

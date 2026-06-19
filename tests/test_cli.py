@@ -1,5 +1,7 @@
+import argparse
+
 import jupydex.cli as cli
-from jupydex.cli import auto_profile_name, redact_token
+from jupydex.cli import auto_profile_name, parse_timeout, redact_token
 
 
 def test_auto_profile_name_is_short_and_stable():
@@ -14,6 +16,22 @@ def test_auto_profile_name_is_short_and_stable():
 def test_redact_token_keeps_only_edges():
     assert redact_token("short") == "*****"
     assert redact_token("1234567890abcdef") == "1234...cdef"
+
+
+def test_parse_timeout_supports_disabled_and_seconds():
+    assert parse_timeout("none") is None
+    assert parse_timeout("off") is None
+    assert parse_timeout("0") is None
+    assert parse_timeout("1.5") == 1.5
+
+
+def test_parse_timeout_rejects_invalid_value():
+    try:
+        parse_timeout("soon")
+    except argparse.ArgumentTypeError:
+        pass
+    else:
+        raise AssertionError("Expected ArgumentTypeError")
 
 
 def test_connect_new_workspace_does_not_change_default(monkeypatch):
