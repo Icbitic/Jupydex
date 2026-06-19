@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import json
 import os
 from pathlib import Path
@@ -8,6 +8,39 @@ from typing import Any
 
 
 DEFAULT_PROFILE = "default"
+DEFAULT_MIRROR_MAX_FILE_SIZE_MB = 5.0
+DEFAULT_MIRROR_IGNORE_DIRS = [
+    ".cache",
+    ".env",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "env",
+    "node_modules",
+    "venv",
+]
+DEFAULT_MIRROR_IGNORE_GLOBS = [
+    "*.bin",
+    "*.ckpt",
+    "*.gguf",
+    "*.h5",
+    "*.hdf5",
+    "*.joblib",
+    "*.model",
+    "*.onnx",
+    "*.pkl",
+    "*.pt",
+    "*.pth",
+    "*.safetensors",
+    "*.tflite",
+]
 
 
 @dataclass
@@ -17,6 +50,19 @@ class Profile:
     workspace: str
     workspace_input: str
     mirror_path: str | None = None
+
+
+@dataclass
+class MirrorConfig:
+    max_file_size_mb: float | None = DEFAULT_MIRROR_MAX_FILE_SIZE_MB
+    ignore_dirs: list[str] = field(default_factory=lambda: list(DEFAULT_MIRROR_IGNORE_DIRS))
+    ignore_globs: list[str] = field(default_factory=lambda: list(DEFAULT_MIRROR_IGNORE_GLOBS))
+
+    @property
+    def max_file_size_bytes(self) -> int | None:
+        if self.max_file_size_mb is None:
+            return None
+        return int(self.max_file_size_mb * 1024 * 1024)
 
 
 def config_path() -> Path:
@@ -61,6 +107,28 @@ class ConfigStore:
     def save_profile(self, name: str, profile: Profile) -> None:
         data = self.load_all()
         data["profiles"][name] = asdict(profile)
+        self.save_all(data)
+
+    def mirror_config(self) -> MirrorConfig:
+        raw = self.load_all().get("mirror", {})
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise ValueError(f"Invalid mirror config in {self.path}")
+
+        max_file_size_mb = raw.get("max_file_size_mb", DEFAULT_MIRROR_MAX_FILE_SIZE_MB)
+        if max_file_size_mb is not None:
+            max_file_size_mb = float(max_file_size_mb)
+
+        return MirrorConfig(
+            max_file_size_mb=max_file_size_mb,
+            ignore_dirs=list_config(raw, "ignore_dirs", DEFAULT_MIRROR_IGNORE_DIRS),
+            ignore_globs=list_config(raw, "ignore_globs", DEFAULT_MIRROR_IGNORE_GLOBS),
+        )
+
+    def save_mirror_config(self, mirror_config: MirrorConfig) -> None:
+        data = self.load_all()
+        data["mirror"] = asdict(mirror_config)
         self.save_all(data)
 
     def remove_profile(self, name: str) -> str | None:
@@ -135,3 +203,16 @@ class ProfileManager:
 
     def list(self) -> dict[str, Profile]:
         return self.store.list_profiles()
+
+    def mirror_config(self) -> MirrorConfig:
+        return self.store.mirror_config()
+
+    def save_mirror_config(self, mirror_config: MirrorConfig) -> None:
+        self.store.save_mirror_config(mirror_config)
+
+
+def list_config(raw: dict[str, Any], key: str, default: list[str]) -> list[str]:
+    values = raw.get(key, default)
+    if not isinstance(values, list):
+        raise ValueError(f"Mirror config {key!r} must be a list")
+    return [str(value) for value in values]

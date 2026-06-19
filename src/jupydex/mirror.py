@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import fnmatch
 import hashlib
 import json
 import os
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .client import JupyterClient, workspace_relative_path
-from .config import Profile
+from .config import MirrorConfig, Profile
 
 
 METADATA_FILE = "jupydex-mirror-state.json"
@@ -26,6 +27,42 @@ class MirrorSummary:
 
 class MirrorConflict(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class MirrorPolicy:
+    max_file_size_bytes: int | None
+    ignore_dirs: tuple[str, ...]
+    ignore_globs: tuple[str, ...]
+
+    @classmethod
+    def from_config(cls, mirror_config: MirrorConfig | None) -> MirrorPolicy:
+        config = mirror_config or MirrorConfig()
+        return cls(
+            max_file_size_bytes=config.max_file_size_bytes,
+            ignore_dirs=tuple(config.ignore_dirs),
+            ignore_globs=tuple(config.ignore_globs),
+        )
+
+    def ignores_path(self, rel_path: str, *, is_dir: bool = False) -> bool:
+        rel = workspace_relative_path(rel_path)
+        parts = rel.split("/") if rel else []
+        if any(part in self.ignore_dirs for part in parts):
+            return True
+        if is_dir:
+            return False
+        name = parts[-1] if parts else rel
+        return any(
+            fnmatch.fnmatch(name, pattern) or fnmatch.fnmatch(rel, pattern)
+            for pattern in self.ignore_globs
+        )
+
+    def ignores_size(self, size: int | None) -> bool:
+        return (
+            self.max_file_size_bytes is not None
+            and size is not None
+            and size >= self.max_file_size_bytes
+        )
 
 
 def default_mirror_path(profile_name: str, root: Path | None = None) -> Path:
@@ -99,7 +136,10 @@ def iter_remote_files(
     client: JupyterClient,
     workspace: str,
     rel_path: str = ".",
+    *,
+    policy: MirrorPolicy | None = None,
 ) -> Iterator[dict[str, Any]]:
+    policy = policy or MirrorPolicy.from_config(None)
     for item in client.list_dir(workspace, rel_path):
         typ = item.get("type")
         item_path = str(item.get("path", ""))
@@ -112,9 +152,11 @@ def iter_remote_files(
             child_rel = str(item.get("name", ""))
 
         if typ == "directory":
-            yield from iter_remote_files(client, workspace, child_rel)
+            if not policy.ignores_path(child_rel, is_dir=True):
+                yield from iter_remote_files(client, workspace, child_rel, policy=policy)
         elif typ == "file":
-            yield {**item, "workspace_relative_path": child_rel}
+            if not policy.ignores_path(child_rel):
+                yield {**item, "workspace_relative_path": child_rel}
 
 
 def pull_mirror(
@@ -123,9 +165,13 @@ def pull_mirror(
     profile: Profile,
     *,
     subpath: str = ".",
-    max_size_bytes: int | None = 50 * 1024 * 1024,
+    max_size_bytes: int | None = None,
+    mirror_config: MirrorConfig | None = None,
     prune: bool = False,
 ) -> MirrorSummary:
+    policy = MirrorPolicy.from_config(mirror_config)
+    if max_size_bytes is not None:
+        policy = MirrorPolicy(max_size_bytes, policy.ignore_dirs, policy.ignore_globs)
     mirror_root = mirror_path_for_profile(profile_name, profile)
     mirror_root.mkdir(parents=True, exist_ok=True)
     metadata = load_metadata(mirror_root)
@@ -141,7 +187,7 @@ def pull_mirror(
     )
     files = metadata.setdefault("files", {})
 
-    remote_files = iter_remote_files(client, profile.workspace, subpath)
+    remote_files = iter_remote_files(client, profile.workspace, subpath, policy=policy)
     seen: set[str] = set()
     summary = MirrorSummary()
 
@@ -149,7 +195,7 @@ def pull_mirror(
         rel = str(model["workspace_relative_path"])
         seen.add(rel)
         size = model.get("size")
-        if max_size_bytes is not None and isinstance(size, int) and size > max_size_bytes:
+        if policy.ignores_size(size if isinstance(size, int) else None):
             summary.skipped += 1
             continue
 
@@ -166,6 +212,8 @@ def pull_mirror(
 
     if prune:
         for rel, info in list(files.items()):
+            if local_file_ignored(mirror_root, rel, policy):
+                continue
             if rel in seen:
                 continue
             local_path = safe_local_path(mirror_root, rel)
@@ -179,15 +227,25 @@ def pull_mirror(
     return summary
 
 
-def iter_local_files(mirror_root: Path) -> Iterator[Path]:
+def iter_local_files(mirror_root: Path, policy: MirrorPolicy | None = None) -> Iterator[Path]:
+    policy = policy or MirrorPolicy.from_config(None)
     if not mirror_root.exists():
         return
     for root, dirs, files in os.walk(mirror_root):
         root_path = Path(root)
-        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        kept_dirs: list[str] = []
+        for dirname in dirs:
+            rel_dir = relative_to_mirror(mirror_root, root_path / dirname)
+            if not policy.ignores_path(rel_dir, is_dir=True):
+                kept_dirs.append(dirname)
+        dirs[:] = kept_dirs
+
         for name in files:
             path = root_path / name
             if path.name == METADATA_FILE:
+                continue
+            rel = relative_to_mirror(mirror_root, path)
+            if policy.ignores_path(rel) or policy.ignores_size(path.stat().st_size):
                 continue
             yield path
 
@@ -204,6 +262,17 @@ def parent_dir(rel_path: str) -> str:
     return "/".join(parts[:-1])
 
 
+def local_file_ignored(mirror_root: Path, rel_path: str, policy: MirrorPolicy) -> bool:
+    if policy.ignores_path(rel_path):
+        return True
+    local_path = safe_local_path(mirror_root, rel_path)
+    return (
+        local_path.exists()
+        and local_path.is_file()
+        and policy.ignores_size(local_path.stat().st_size)
+    )
+
+
 def push_mirror(
     client: JupyterClient,
     profile_name: str,
@@ -211,13 +280,15 @@ def push_mirror(
     *,
     force: bool = False,
     delete: bool = False,
+    mirror_config: MirrorConfig | None = None,
 ) -> MirrorSummary:
+    policy = MirrorPolicy.from_config(mirror_config)
     mirror_root = mirror_path_for_profile(profile_name, profile)
     metadata = load_metadata(mirror_root)
     files = metadata.setdefault("files", {})
     summary = MirrorSummary()
 
-    local_files = iter_local_files(mirror_root)
+    local_files = iter_local_files(mirror_root, policy)
     local_rel_paths = {relative_to_mirror(mirror_root, path): path for path in local_files}
 
     for rel, local_path in sorted(local_rel_paths.items()):
@@ -254,6 +325,8 @@ def push_mirror(
 
     if delete:
         for rel, tracked in list(files.items()):
+            if local_file_ignored(mirror_root, rel, policy):
+                continue
             if rel in local_rel_paths:
                 continue
             remote_model = client.contents(
@@ -286,13 +359,19 @@ def push_mirror(
     return summary
 
 
-def mirror_status(profile_name: str, profile: Profile) -> dict[str, list[str]]:
+def mirror_status(
+    profile_name: str,
+    profile: Profile,
+    *,
+    mirror_config: MirrorConfig | None = None,
+) -> dict[str, list[str]]:
+    policy = MirrorPolicy.from_config(mirror_config)
     mirror_root = mirror_path_for_profile(profile_name, profile)
     metadata = load_metadata(mirror_root)
     files = metadata.setdefault("files", {})
     local_rel_paths = {
         relative_to_mirror(mirror_root, path): path
-        for path in iter_local_files(mirror_root)
+        for path in iter_local_files(mirror_root, policy)
     }
 
     added: list[str] = []
@@ -308,6 +387,8 @@ def mirror_status(profile_name: str, profile: Profile) -> dict[str, list[str]]:
             modified.append(rel)
 
     for rel in sorted(files):
+        if local_file_ignored(mirror_root, rel, policy):
+            continue
         if rel not in local_rel_paths:
             deleted.append(rel)
 

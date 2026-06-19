@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 from .client import JupyterClient, parse_jupyter_url, token_from_url
-from .config import Profile, ProfileManager, config_path
+from .config import MirrorConfig, Profile, ProfileManager, config_path
 from .mirror import (
     default_mirror_path,
     mirror_path_for_profile,
@@ -60,10 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="Show Jupyter server status")
     sub.add_parser("mirror", help="Print the local shadow mirror path")
+    mirror_config = sub.add_parser("mirror-config", help="Show or update global mirror sync config")
+    mirror_config.add_argument("--max-size-mb", type=float, help="Skip files at or above this size")
+    mirror_config.add_argument("--no-size-limit", action="store_true", help="Do not skip files by size")
+    mirror_config.add_argument("--ignore-dir", action="append", default=[], help="Add a directory name to skip")
+    mirror_config.add_argument("--ignore-glob", action="append", default=[], help="Add a file glob to skip")
+    mirror_config.add_argument("--reset", action="store_true", help="Reset mirror config to defaults")
 
     pull = sub.add_parser("pull", help="Pull the remote workspace into the local mirror")
     pull.add_argument("path", nargs="?", default=".")
-    pull.add_argument("--max-size-mb", type=float, default=50.0)
+    pull.add_argument("--max-size-mb", type=float, help="Override global mirror size limit")
     pull.add_argument("--all", action="store_true", help="Pull files without a size limit")
     pull.add_argument("--prune", action="store_true", help="Remove clean tracked files missing remotely")
 
@@ -493,14 +499,19 @@ def command_mirror(args: argparse.Namespace) -> int:
 
 def command_pull(args: argparse.Namespace) -> int:
     client, profile = client_for_profile(args.profile)
-    max_size = None if args.all else int(args.max_size_mb * 1024 * 1024)
+    mirror_config = ProfileManager().mirror_config()
+    if args.all:
+        mirror_config.max_file_size_mb = None
+    elif args.max_size_mb is not None:
+        mirror_config.max_file_size_mb = args.max_size_mb
+
     with client:
         summary = pull_mirror(
             client,
             args.profile,
             profile,
             subpath=args.path,
-            max_size_bytes=max_size,
+            mirror_config=mirror_config,
             prune=args.prune,
         )
     print(f"mirror: {mirror_path_for_profile(args.profile, profile)}")
@@ -512,6 +523,7 @@ def command_pull(args: argparse.Namespace) -> int:
 
 def command_push(args: argparse.Namespace) -> int:
     client, profile = client_for_profile(args.profile)
+    mirror_config = ProfileManager().mirror_config()
     with client:
         summary = push_mirror(
             client,
@@ -519,6 +531,7 @@ def command_push(args: argparse.Namespace) -> int:
             profile,
             force=args.force,
             delete=args.delete,
+            mirror_config=mirror_config,
         )
     print(f"pushed: {summary.pushed}")
     if summary.deleted_remote:
@@ -528,7 +541,7 @@ def command_push(args: argparse.Namespace) -> int:
 
 def command_dirty(args: argparse.Namespace) -> int:
     profile = ProfileManager().get(args.profile)
-    status = mirror_status(args.profile, profile)
+    status = mirror_status(args.profile, profile, mirror_config=ProfileManager().mirror_config())
     for label in ("added", "modified", "deleted"):
         for path in status[label]:
             print(f"{label[0].upper()} {path}")
@@ -634,7 +647,8 @@ def sync_before_remote_action(
     if no_sync:
         return
 
-    status = mirror_status(profile_name, profile)
+    mirror_config = ProfileManager().mirror_config()
+    status = mirror_status(profile_name, profile, mirror_config=mirror_config)
     if not any(status.values()):
         return
 
@@ -644,6 +658,7 @@ def sync_before_remote_action(
         profile,
         force=force_sync,
         delete=True,
+        mirror_config=mirror_config,
     )
     print(
         f"synced: pushed {summary.pushed}, deleted remote {summary.deleted_remote}",
@@ -662,11 +677,54 @@ def command_shell(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_mirror_config(args: argparse.Namespace) -> int:
+    profiles = ProfileManager()
+    mirror_config = MirrorConfig() if args.reset else profiles.mirror_config()
+    changed = args.reset
+
+    if args.no_size_limit:
+        mirror_config.max_file_size_mb = None
+        changed = True
+    if args.max_size_mb is not None:
+        mirror_config.max_file_size_mb = args.max_size_mb
+        changed = True
+    for dirname in args.ignore_dir:
+        if dirname not in mirror_config.ignore_dirs:
+            mirror_config.ignore_dirs.append(dirname)
+            changed = True
+    for pattern in args.ignore_glob:
+        if pattern not in mirror_config.ignore_globs:
+            mirror_config.ignore_globs.append(pattern)
+            changed = True
+
+    if changed:
+        profiles.save_mirror_config(mirror_config)
+    print_mirror_config(mirror_config, changed=changed)
+    return 0
+
+
+def print_mirror_config(mirror_config: MirrorConfig, *, changed: bool = False) -> None:
+    if changed:
+        print("Saved mirror config")
+    print(f"Config: {config_path()}")
+    if mirror_config.max_file_size_mb is None:
+        print("Max file size: none")
+    else:
+        print(f"Max file size: {mirror_config.max_file_size_mb:g} MB")
+    print("Ignore dirs:")
+    for dirname in mirror_config.ignore_dirs:
+        print(f"  {dirname}")
+    print("Ignore globs:")
+    for pattern in mirror_config.ignore_globs:
+        print(f"  {pattern}")
+
+
 COMMANDS = {
     "connect": command_connect,
     "profile": command_profile,
     "status": command_status,
     "mirror": command_mirror,
+    "mirror-config": command_mirror_config,
     "pull": command_pull,
     "push": command_push,
     "dirty": command_dirty,

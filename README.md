@@ -84,6 +84,17 @@ By default, mirrors live at:
 ~/jdx-mirrors/<profile>
 ```
 
+The mirror uses a global ignore policy. By default, it skips common environment/cache directories such as `.venv`, `venv`, `node_modules`, `__pycache__`, model artifact globs such as `*.pt`, `*.pth`, `*.ckpt`, `*.safetensors`, `*.onnx`, and any file at or above 5 MB.
+
+Show or update that policy:
+
+```bash
+jdx mirror-config
+jdx mirror-config --max-size-mb 10
+jdx mirror-config --ignore-dir data-cache
+jdx mirror-config --ignore-glob '*.tar'
+```
+
 Edit files in that mirror with normal local tools:
 
 ```bash
@@ -131,6 +142,7 @@ jdx profile remove name  # remove a saved local profile
 jdx profile show name    # show profile details
 jdx profile path         # print the profile config path
 jdx mirror              # print local mirror path
+jdx mirror-config       # show global mirror ignore policy
 jdx dirty               # local mirror changes since last sync
 
 jdx pull                # remote -> local mirror

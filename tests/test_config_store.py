@@ -1,4 +1,4 @@
-from jupydex.config import DEFAULT_PROFILE, ConfigStore, Profile, ProfileManager
+from jupydex.config import DEFAULT_PROFILE, ConfigStore, MirrorConfig, Profile, ProfileManager
 
 
 def test_default_profile_name_falls_back_to_default(tmp_path):
@@ -69,6 +69,29 @@ def test_remove_profile_rejects_missing_profile(tmp_path):
         assert "lab1" in str(exc)
     else:
         raise AssertionError("Expected KeyError")
+
+
+def test_mirror_config_uses_defaults(tmp_path):
+    store = ConfigStore(tmp_path / "config.json")
+
+    mirror_config = store.mirror_config()
+
+    assert mirror_config.max_file_size_mb == 5.0
+    assert ".venv" in mirror_config.ignore_dirs
+    assert "*.safetensors" in mirror_config.ignore_globs
+
+
+def test_mirror_config_can_be_saved(tmp_path):
+    store = ConfigStore(tmp_path / "config.json")
+    mirror_config = MirrorConfig(
+        max_file_size_mb=None,
+        ignore_dirs=["venv"],
+        ignore_globs=["*.pt"],
+    )
+
+    store.save_mirror_config(mirror_config)
+
+    assert store.mirror_config() == mirror_config
 
 
 def test_profile_manager_wraps_profile_operations(tmp_path):
