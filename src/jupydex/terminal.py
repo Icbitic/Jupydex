@@ -19,6 +19,16 @@ import urllib.parse
 from .client import JupyterClient
 
 
+LOCAL_TERMINAL_RESTORE = (
+    "\x1b[0m"
+    "\x1b[?25h"
+    "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l"
+    "\x1b[?2004l"
+    "\x1b[?1049l\x1b[?1047l\x1b[?47l"
+    "\x1b[?1l\x1b>"
+)
+
+
 @dataclass
 class CommandResult:
     command: str
@@ -87,6 +97,11 @@ def terminal_payload(message: str) -> str:
 def terminal_size() -> tuple[int, int]:
     size = shutil.get_terminal_size(fallback=(80, 24))
     return size.lines, size.columns
+
+
+def restore_local_terminal(stdout_fd: int | None) -> None:
+    if stdout_fd is not None:
+        os.write(stdout_fd, f"{LOCAL_TERMINAL_RESTORE}\r\n".encode("ascii"))
 
 
 def shell_intro_command(workspace_command_path: str, ready_marker: str) -> str:
@@ -301,8 +316,10 @@ async def run_terminal_command(
 
     deadline = None if timeout is None else time.monotonic() + timeout
     timed_out = False
+    restore_after_exit = False
     exit_code = 124
     stdout_fd = sys.stdout.fileno() if stream else None
+    restore_fd = stdout_fd if stream and sys.stdout.isatty() else None
 
     def emit_stdout(text: str) -> None:
         if stdout_fd is not None:
@@ -326,6 +343,7 @@ async def run_terminal_command(
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         timed_out = True
+                        restore_after_exit = True
                         break
                     recv_timeout = min(recv_timeout, remaining)
 
@@ -338,8 +356,13 @@ async def run_terminal_command(
                 if parsed_exit_code is not None:
                     exit_code = parsed_exit_code
                     break
+    except BaseException:
+        restore_after_exit = True
+        raise
     finally:
         cleanup.restore_signal_handlers()
+        if stream and restore_after_exit:
+            restore_local_terminal(restore_fd)
         cleanup.cleanup()
 
     return CommandResult(

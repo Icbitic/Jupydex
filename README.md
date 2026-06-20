@@ -121,6 +121,8 @@ jdx run --timeout 600 -- python train.py
 jdx run --timeout none -- python train.py
 ```
 
+If a timeout interrupts a terminal UI, `jdx` restores local terminal modes before returning. For full-screen interactive tools, prefer `jdx shell`.
+
 Use `--no-sync` when you intentionally want to run the current remote state without pushing local edits:
 
 ```bash

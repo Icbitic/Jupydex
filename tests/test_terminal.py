@@ -1,7 +1,7 @@
 import re
 import signal
 
-from jupydex.terminal import TerminalCleanup, TerminalOutputParser
+from jupydex.terminal import LOCAL_TERMINAL_RESTORE, TerminalCleanup, TerminalOutputParser
 
 
 class FakeClient:
@@ -62,3 +62,11 @@ def test_terminal_output_parser_holds_only_done_marker_prefix():
 
     assert parser.feed(f"{start}progress 1") is None
     assert emitted == ["progress 1"]
+
+
+def test_local_terminal_restore_disables_tui_modes():
+    assert "\x1b[?1049l" in LOCAL_TERMINAL_RESTORE
+    assert "\x1b[?1000l" in LOCAL_TERMINAL_RESTORE
+    assert "\x1b[?1006l" in LOCAL_TERMINAL_RESTORE
+    assert "\x1b[?2004l" in LOCAL_TERMINAL_RESTORE
+    assert "\x1b[?25h" in LOCAL_TERMINAL_RESTORE
