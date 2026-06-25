@@ -58,6 +58,8 @@ def test_mirror_status_reports_local_changes(tmp_path):
 def test_mirror_status_ignores_global_policy(tmp_path):
     prof = profile(tmp_path)
     (tmp_path / "keep.py").write_text("print('ok')", encoding="utf-8")
+    (tmp_path / ".DS_Store").write_text("ignored", encoding="utf-8")
+    (tmp_path / "._keep.py").write_text("ignored", encoding="utf-8")
     (tmp_path / ".venv").mkdir()
     (tmp_path / ".venv" / "ignored.py").write_text("ignored", encoding="utf-8")
     (tmp_path / "weights.safetensors").write_text("ignored", encoding="utf-8")

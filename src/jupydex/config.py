@@ -27,6 +27,10 @@ DEFAULT_MIRROR_IGNORE_DIRS = [
     "venv",
 ]
 DEFAULT_MIRROR_IGNORE_GLOBS = [
+    ".DS_Store",
+    "._*",
+    "Desktop.ini",
+    "Thumbs.db",
     "*.bin",
     "*.ckpt",
     "*.gguf",
@@ -212,7 +216,14 @@ class ProfileManager:
 
 
 def list_config(raw: dict[str, Any], key: str, default: list[str]) -> list[str]:
-    values = raw.get(key, default)
+    values = raw.get(key)
+    if values is None:
+        return list(default)
     if not isinstance(values, list):
         raise ValueError(f"Mirror config {key!r} must be a list")
-    return [str(value) for value in values]
+    merged = list(default)
+    for value in values:
+        text = str(value)
+        if text not in merged:
+            merged.append(text)
+    return merged

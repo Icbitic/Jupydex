@@ -78,20 +78,45 @@ def test_mirror_config_uses_defaults(tmp_path):
 
     assert mirror_config.max_file_size_mb == 5.0
     assert ".venv" in mirror_config.ignore_dirs
+    assert ".DS_Store" in mirror_config.ignore_globs
     assert "*.safetensors" in mirror_config.ignore_globs
+
+
+def test_mirror_config_merges_saved_values_with_defaults(tmp_path):
+    store = ConfigStore(tmp_path / "config.json")
+    store.save_all(
+        {
+            "mirror": {
+                "ignore_dirs": ["saved_vectors"],
+                "ignore_globs": ["*.custom"],
+                "max_file_size_mb": 8.0,
+            }
+        }
+    )
+
+    mirror_config = store.mirror_config()
+
+    assert mirror_config.max_file_size_mb == 8.0
+    assert ".venv" in mirror_config.ignore_dirs
+    assert "saved_vectors" in mirror_config.ignore_dirs
+    assert ".DS_Store" in mirror_config.ignore_globs
+    assert "*.custom" in mirror_config.ignore_globs
 
 
 def test_mirror_config_can_be_saved(tmp_path):
     store = ConfigStore(tmp_path / "config.json")
     mirror_config = MirrorConfig(
         max_file_size_mb=None,
-        ignore_dirs=["venv"],
-        ignore_globs=["*.pt"],
+        ignore_dirs=[],
+        ignore_globs=[],
     )
 
     store.save_mirror_config(mirror_config)
 
-    assert store.mirror_config() == mirror_config
+    loaded = store.mirror_config()
+    assert loaded.max_file_size_mb is None
+    assert ".venv" in loaded.ignore_dirs
+    assert ".DS_Store" in loaded.ignore_globs
 
 
 def test_profile_manager_wraps_profile_operations(tmp_path):
