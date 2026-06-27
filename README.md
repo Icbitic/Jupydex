@@ -137,6 +137,13 @@ Open a remote shell in the selected workspace:
 jdx shell
 ```
 
+The shell starts without pushing local mirror changes first, so it remains available even when the Jupyter Contents API is flaky. Sync explicitly when you want local mirror edits pushed before opening the shell:
+
+```bash
+jdx shell --sync
+jdx shell --force-sync
+```
+
 The shell uses raw passthrough after setup. Terminal apps such as `nano`, `less`, and `top` should work. It is still a Jupyter terminal websocket rather than a real SSH daemon, so very demanding TUI programs may expose terminal-emulation differences. Exit with `exit` or `Ctrl-D`.
 
 ## Commands
@@ -175,6 +182,7 @@ Paths passed to file commands are workspace-relative. A leading `/` means worksp
 
 - Tokens are stored in the global jdx profile config. Prefer short-lived development tokens.
 - `push` checks whether tracked remote files changed since the last pull and stops on conflicts unless `--force` is used.
-- `run` and `shell` sync dirty mirror changes first by default. Use `--no-sync` to skip that.
+- `run` syncs dirty mirror changes first by default. Use `jdx run --no-sync -- ...` to skip that.
+- `shell` opens directly by default. Use `jdx shell --sync` when you want to push dirty mirror changes first.
 - If the local terminal receives `SIGHUP` or `SIGTERM`, `jdx` tries to close only the Jupyter terminal it created for that command. An uncatchable `SIGKILL` cannot be cleaned up by any CLI.
 - The mirror sync state is stored as `jupydex-mirror-state.json` inside each mirror and is not pushed to the Jupyter workspace.

@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 import sys
 
-from .client import JupyterClient, parse_jupyter_url, token_from_url
+from .client import JupyterClient, JupyterError, parse_jupyter_url, token_from_url
 from .config import MirrorConfig, Profile, ProfileManager, config_path
 from .mirror import (
     default_mirror_path,
@@ -113,8 +113,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--force-sync", action="store_true", help="Overwrite remote changes while syncing before run")
     run.add_argument("remote_command", nargs=argparse.REMAINDER)
 
-    shell = sub.add_parser("shell", help="Sync local mirror changes, then open an interactive remote shell")
-    shell.add_argument("--no-sync", action="store_true", help="Open shell without pushing local mirror changes first")
+    shell = sub.add_parser("shell", help="Open an interactive remote shell")
+    shell.add_argument("--sync", action="store_true", help="Push local mirror changes before opening shell")
     shell.add_argument("--force-sync", action="store_true", help="Overwrite remote changes while syncing before shell")
 
     return parser
@@ -687,11 +687,18 @@ def sync_before_remote_action(
 def command_shell(args: argparse.Namespace) -> int:
     client, profile = client_for_profile(args.profile)
     with client:
-        sync_before_remote_action(client, args.profile, profile, args.no_sync, args.force_sync)
-        interactive_terminal_sync(
-            client,
-            profile.workspace_input or profile.workspace,
-        )
+        if args.sync or args.force_sync:
+            sync_before_remote_action(client, args.profile, profile, False, args.force_sync)
+        try:
+            interactive_terminal_sync(
+                client,
+                profile.workspace_input or profile.workspace,
+            )
+        except JupyterError as exc:
+            raise RuntimeError(
+                f"Could not open shell for profile {args.profile!r} "
+                f"({profile.base_url}): {exc}"
+            ) from exc
     return 0
 
 

@@ -1,7 +1,9 @@
 import argparse
 
 import jupydex.cli as cli
+from jupydex.client import JupyterError
 from jupydex.cli import auto_profile_name, parse_timeout, redact_token
+from jupydex.config import Profile
 
 
 def test_auto_profile_name_is_short_and_stable():
@@ -79,3 +81,93 @@ def test_connect_new_workspace_does_not_change_default(monkeypatch):
 
     assert list(profiles.saved) == ["jdx-cd9bbb"]
     assert profiles.default_changes == []
+
+
+def stub_shell(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return None
+
+    profile = Profile(
+        base_url="http://example.com",
+        token="tok",
+        workspace="workspace",
+        workspace_input="/remote/workspace",
+    )
+
+    monkeypatch.setattr(cli, "client_for_profile", lambda name: (FakeClient(), profile))
+    monkeypatch.setattr(cli, "sync_before_remote_action", lambda *args: calls.append(("sync", args)))
+    monkeypatch.setattr(cli, "interactive_terminal_sync", lambda *args: calls.append(("shell", args)))
+    return calls
+
+
+def test_shell_does_not_sync_by_default(monkeypatch):
+    calls = stub_shell(monkeypatch)
+
+    args = cli.build_parser().parse_args(["--profile", "lab1", "shell"])
+
+    assert cli.command_shell(args) == 0
+    assert [name for name, _args in calls] == ["shell"]
+
+
+def test_shell_sync_is_opt_in(monkeypatch):
+    calls = stub_shell(monkeypatch)
+
+    args = cli.build_parser().parse_args(["--profile", "lab1", "shell", "--sync"])
+
+    assert cli.command_shell(args) == 0
+    assert [name for name, _args in calls] == ["sync", "shell"]
+    _name, sync_args = calls[0]
+    assert sync_args[-2:] == (False, False)
+
+
+def test_shell_force_sync_implies_sync(monkeypatch):
+    calls = stub_shell(monkeypatch)
+
+    args = cli.build_parser().parse_args(["--profile", "lab1", "shell", "--force-sync"])
+
+    assert cli.command_shell(args) == 0
+    assert [name for name, _args in calls] == ["sync", "shell"]
+    _name, sync_args = calls[0]
+    assert sync_args[-2:] == (False, True)
+
+
+def test_shell_error_names_profile(monkeypatch):
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return None
+
+    profile = Profile(
+        base_url="http://example.com",
+        token="tok",
+        workspace="workspace",
+        workspace_input="/remote/workspace",
+    )
+
+    monkeypatch.setattr(cli, "client_for_profile", lambda name: (FakeClient(), profile))
+    monkeypatch.setattr(
+        cli,
+        "interactive_terminal_sync",
+        lambda *_args: (_ for _ in ()).throw(JupyterError("POST /api/terminals failed: 502")),
+    )
+
+    args = cli.build_parser().parse_args(["--profile", "lab1", "shell"])
+
+    try:
+        cli.command_shell(args)
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+    assert "lab1" in message
+    assert "http://example.com" in message
+    assert "POST /api/terminals failed: 502" in message
